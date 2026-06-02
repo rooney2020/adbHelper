@@ -2141,6 +2141,8 @@ def handle_crash_list(args: argparse.Namespace) -> None:
                 if len(parts) < 8:
                     continue
                 name = " ".join(parts[7:])
+                if name == "." or name == "..":
+                    continue
                 size = parts[4]
                 date = f"{parts[5]} {parts[6]}"
                 path = f"/data/tombstones/{name}"
@@ -2165,6 +2167,8 @@ def handle_crash_list(args: argparse.Namespace) -> None:
                 if len(parts) < 8:
                     continue
                 name = " ".join(parts[7:])
+                if name == "." or name == "..":
+                    continue
                 size = parts[4]
                 date = f"{parts[5]} {parts[6]}"
                 path = f"/data/anr/{name}"
@@ -2189,6 +2193,8 @@ def handle_crash_list(args: argparse.Namespace) -> None:
                 if len(parts) < 8:
                     continue
                 name = " ".join(parts[7:])
+                if name == "." or name == "..":
+                    continue
                 size = parts[4]
                 date = f"{parts[5]} {parts[6]}"
                 path = f"/data/system/dropbox/{name}"

@@ -286,79 +286,112 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                     {crash.crashFiles.tombstones.length > 0 ? (
                       <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e74c3c" }}>💀 Tombstones ({crash.crashFiles.tombstones.length})</h4>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {crash.crashFiles.tombstones.filter((file: any) => !file.name.endsWith(".pb")).map((file: any, index: number) => (
-                            <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
-                              crash.setCrashContentLoading(true);
-                              try {
-                                const api = (window as any).adbHelperApi?.crash;
-                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
-                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
-                                if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
-                                else alert(`读取失败: ${data.message}`);
-                              } catch (error: any) {
-                                alert(`请求出错: ${error.message}`);
-                              }
-                              crash.setCrashContentLoading(false);
-                            }}>
-                              <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
-                            </div>
-                          ))}
+                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e74c3c", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                          const content = event.currentTarget.nextElementSibling as HTMLElement;
+                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
+                        }}>💀 Tombstones ({crash.crashFiles.tombstones.length}) ▼</h4>
+                        <div style={{ display: "block" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
+                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            {crash.crashFiles.tombstones.filter((file: any) => !file.name.endsWith(".pb")).map((file: any, index: number) => (
+                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
+                                crash.setCrashContentLoading(true);
+                                try {
+                                  const api = (window as any).adbHelperApi?.crash;
+                                  if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                  const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
+                                  if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
+                                  else alert(`读取失败: ${data.message}`);
+                                } catch (error: any) {
+                                  alert(`请求出错: ${error.message}`);
+                                }
+                                crash.setCrashContentLoading(false);
+                              }}>
+                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : null}
                     {crash.crashFiles.anr.length > 0 ? (
                       <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e67e22" }}>⚠️ ANR ({crash.crashFiles.anr.length})</h4>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {crash.crashFiles.anr.map((file: any, index: number) => (
-                            <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
-                              crash.setCrashContentLoading(true);
-                              try {
-                                const api = (window as any).adbHelperApi?.crash;
-                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
-                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
-                                if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
-                                else alert(`读取失败: ${data.message}`);
-                              } catch (error: any) {
-                                alert(`请求出错: ${error.message}`);
-                              }
-                              crash.setCrashContentLoading(false);
-                            }}>
-                              <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
-                            </div>
-                          ))}
+                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e67e22", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                          const content = event.currentTarget.nextElementSibling as HTMLElement;
+                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
+                        }}>⚠️ ANR ({crash.crashFiles.anr.length}) ▼</h4>
+                        <div style={{ display: "block" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
+                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            {crash.crashFiles.anr.map((file: any, index: number) => (
+                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
+                                crash.setCrashContentLoading(true);
+                                try {
+                                  const api = (window as any).adbHelperApi?.crash;
+                                  if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                  const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
+                                  if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
+                                  else alert(`读取失败: ${data.message}`);
+                                } catch (error: any) {
+                                  alert(`请求出错: ${error.message}`);
+                                }
+                                crash.setCrashContentLoading(false);
+                              }}>
+                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : null}
                     {crash.crashFiles.dropbox.length > 0 ? (
                       <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#8e44ad" }}>📦 Dropbox ({crash.crashFiles.dropbox.length})</h4>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {crash.crashFiles.dropbox.map((file: any, index: number) => (
-                            <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
-                              crash.setCrashContentLoading(true);
-                              try {
-                                const api = (window as any).adbHelperApi?.crash;
-                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
-                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
-                                if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
-                                else alert(`读取失败: ${data.message}`);
-                              } catch (error: any) {
-                                alert(`请求出错: ${error.message}`);
-                              }
-                              crash.setCrashContentLoading(false);
-                            }}>
-                              <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                              <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
-                            </div>
-                          ))}
+                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#8e44ad", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                          const content = event.currentTarget.nextElementSibling as HTMLElement;
+                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
+                        }}>📦 Dropbox ({crash.crashFiles.dropbox.length}) ▼</h4>
+                        <div style={{ display: "block" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
+                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
+                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            {crash.crashFiles.dropbox.map((file: any, index: number) => (
+                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
+                                crash.setCrashContentLoading(true);
+                                try {
+                                  const api = (window as any).adbHelperApi?.crash;
+                                  if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                  const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
+                                  if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
+                                  else alert(`读取失败: ${data.message}`);
+                                } catch (error: any) {
+                                  alert(`请求出错: ${error.message}`);
+                                }
+                                crash.setCrashContentLoading(false);
+                              }}>
+                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
+                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -377,8 +410,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                     bugreport.setBugreportRunning(true);
                     bugreport.setBugreportResult(null);
                     try {
-                      const response = await fetch(`/api/adb-helper/bugreport?deviceId=${encodeURIComponent(shared.currentDeviceId)}`);
-                      const data = await response.json();
+                      const api = (window as any).adbHelperApi?.bugreport;
+                      if (!api) { alert("IPC 接口不可用"); bugreport.setBugreportRunning(false); return; }
+                      const data = await api.fetch({ deviceId: shared.currentDeviceId });
                       if (data.status === "ok") bugreport.setBugreportResult(data.file ?? "完成");
                       else alert(`失败: ${data.message}`);
                     } catch (error: any) {
@@ -418,8 +452,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                     trace.setTraceRunning(true);
                     trace.setTraceResult(null);
                     try {
-                      const response = await fetch(`/api/adb-helper/trace-start?deviceId=${encodeURIComponent(shared.currentDeviceId)}&duration=${trace.traceDuration}&categories=${trace.traceCategories.join(",")}`);
-                      const data = await response.json();
+                      const api = (window as any).adbHelperApi?.trace;
+                      if (!api) { alert("IPC 接口不可用"); trace.setTraceRunning(false); return; }
+                      const data = await api.start({ deviceId: shared.currentDeviceId, duration: Number(trace.traceDuration), categories: trace.traceCategories });
                       if (data.status === "ok") trace.setTraceResult(data.file);
                       else alert(`失败: ${data.message}`);
                     } catch (error: any) {
@@ -434,23 +469,36 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                       <span>✅ 已保存至：<span style={{ fontFamily: "monospace" }}>{trace.traceResult}</span></span>
                       <button className="ghost-button" onClick={() => shared.handleOpenLocalPath(trace.traceResult.replace(/\/[^/]+$/, ""))}>📂 打开目录</button>
                       <button className="ghost-button" onClick={async () => {
-                        const buf = await fetch(`/api/adb-helper/local-file?path=${encodeURIComponent(trace.traceResult)}`).then((response) => response.arrayBuffer());
-                        const win = window.open("https://ui.perfetto.dev");
-                        if (!win) { alert("弹窗被拦截，请允许弹窗"); return; }
-                        const timer = setInterval(() => { win.postMessage("PING", "https://ui.perfetto.dev"); }, 500);
-                        const handler = (event: MessageEvent) => {
-                          if (event.source !== win) return;
-                          if (event.data === "PONG") {
+                        try {
+                          const api = (window as any).adbHelperApi?.trace;
+                          if (!api) { alert("IPC 接口不可用"); return; }
+                          const result = await api.readFile({ path: trace.traceResult });
+                          if (result.status !== "ok") { alert(`读取文件失败: ${result.message}`); return; }
+                          const binaryString = atob(result.data);
+                          const bytes = new Uint8Array(binaryString.length);
+                          for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                          }
+                          const buf = bytes.buffer;
+                          const win = window.open("https://ui.perfetto.dev");
+                          if (!win) { alert("弹窗被拦截，请允许弹窗"); return; }
+                          const timer = setInterval(() => { win.postMessage("PING", "https://ui.perfetto.dev"); }, 500);
+                          const handler = (event: MessageEvent) => {
+                            if (event.source !== win) return;
+                            if (event.data === "PONG") {
+                              clearInterval(timer);
+                              window.removeEventListener("message", handler);
+                              win.postMessage({ perfetto: { buffer: buf, title: trace.traceResult.split("/").pop() } }, "https://ui.perfetto.dev", [buf]);
+                            }
+                          };
+                          window.addEventListener("message", handler);
+                          setTimeout(() => {
                             clearInterval(timer);
                             window.removeEventListener("message", handler);
-                            win.postMessage({ perfetto: { buffer: buf, title: trace.traceResult.split("/").pop() } }, "https://ui.perfetto.dev", [buf]);
-                          }
-                        };
-                        window.addEventListener("message", handler);
-                        setTimeout(() => {
-                          clearInterval(timer);
-                          window.removeEventListener("message", handler);
-                        }, 30000);
+                          }, 30000);
+                        } catch (error: any) {
+                          alert(`请求出错: ${error.message}`);
+                        }
                       }}>🔍 在 Perfetto UI 中查看</button>
                     </div>
                   </div>

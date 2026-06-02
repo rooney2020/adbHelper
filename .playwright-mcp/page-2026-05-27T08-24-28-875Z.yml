@@ -1,0 +1,98 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [active] [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "按键模拟" [ref=e10] [cursor=pointer]
+        - button "布局查看器" [ref=e11] [cursor=pointer]
+        - button "Monkey" [ref=e12] [cursor=pointer]
+        - button "性能测试" [ref=e13] [cursor=pointer]
+        - button "Dumpsys" [ref=e14] [cursor=pointer]
+        - button "设备信息" [ref=e15] [cursor=pointer]
+        - button "备份与恢复" [ref=e16] [cursor=pointer]
+    - generic [ref=e17]:
+      - button "当前设备：is4pr" [ref=e33] [cursor=pointer]:
+        - generic [ref=e21]: 当前设备：is4pr
+      - button "操作" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 操作
+      - button "打开设置中心" [ref=e28] [cursor=pointer]
+  - main [ref=e679]:
+    - generic [ref=e680]:
+      - generic [ref=e681]:
+        - paragraph [ref=e683]: 面板
+        - generic [ref=e684]:
+          - button "新增面板" [ref=e685] [cursor=pointer]
+          - button "收起命令面板" [ref=e686] [cursor=pointer]
+      - button "常用排障 4" [ref=e689] [cursor=pointer]:
+        - generic [ref=e690]:
+          - strong [ref=e691]: 常用排障
+          - generic [ref=e692]: "4"
+    - generic [ref=e694]:
+      - generic [ref=e695]:
+        - generic [ref=e696]:
+          - paragraph [ref=e697]: 命令列表
+          - heading "常用排障" [level=3] [ref=e698]
+          - paragraph [ref=e699]: 设备连接、状态确认与基础探测
+        - button "添加命令" [ref=e700] [cursor=pointer]
+      - generic [ref=e702]: 命令块 4
+      - generic [ref=e703]:
+        - article [ref=e704]:
+          - generic [ref=e705]:
+            - button "adb devices 列出设备、传输方式和基础标识。 adb devices -l" [ref=e706] [cursor=pointer]:
+              - generic [ref=e707]:
+                - strong [ref=e708]: adb devices
+                - generic [ref=e709]: 列出设备、传输方式和基础标识。
+              - code [ref=e710]: adb devices -l
+            - button "▶ 执行" [ref=e712] [cursor=pointer]
+        - article [ref=e713]:
+          - generic [ref=e714]:
+            - button "adb get-state 快速检查当前设备是否在线。 adb get-state" [ref=e715] [cursor=pointer]:
+              - generic [ref=e716]:
+                - strong [ref=e717]: adb get-state
+                - generic [ref=e718]: 快速检查当前设备是否在线。
+              - code [ref=e719]: adb get-state
+            - button "▶ 执行" [ref=e721] [cursor=pointer]
+        - article [ref=e722]:
+          - generic [ref=e723]:
+            - button "adb version 查看当前 adb 客户端与服务端版本信息。 adb shell pm clear --user 10 com.zone.service.carvoice" [ref=e724] [cursor=pointer]:
+              - generic [ref=e725]:
+                - strong [ref=e726]: adb version
+                - generic [ref=e727]: 查看当前 adb 客户端与服务端版本信息。
+              - code [ref=e728]: adb shell pm clear --user 10 com.zone.service.carvoice
+            - button "▶ 执行" [ref=e730] [cursor=pointer]
+        - article [ref=e731]:
+          - generic [ref=e732]:
+            - button "adb shell getprop 读取系统属性。 adb shell getprop ro.build.display.id" [ref=e733] [cursor=pointer]:
+              - generic [ref=e734]:
+                - strong [ref=e735]: adb shell getprop
+                - generic [ref=e736]: 读取系统属性。
+              - code [ref=e737]: adb shell getprop ro.build.display.id
+            - button "▶ 执行" [ref=e739] [cursor=pointer]
+    - generic [ref=e741]:
+      - generic [ref=e742]:
+        - paragraph [ref=e744]: 命令执行与结果工作区
+        - generic [ref=e745]:
+          - button "收起工作区侧栏" [ref=e746] [cursor=pointer]
+          - button "最大化工作区" [ref=e748] [cursor=pointer]
+      - generic [ref=e750]:
+        - textbox "先在中间选择一个命令块" [disabled] [ref=e751]
+        - button "执行并解析" [disabled] [ref=e753]
+      - generic [ref=e754]:
+        - generic [ref=e755]:
+          - generic [ref=e756]:
+            - paragraph [ref=e757]: 结果工作区
+            - generic [ref=e758]:
+              - textbox "搜索结果关键词，例如 fallback / Pixel" [ref=e759]
+              - generic [ref=e760]:
+                - button "导出" [disabled] [ref=e762]
+                - generic [ref=e763]: 匹配 0
+          - generic [ref=e764]:
+            - button "结构化" [ref=e765] [cursor=pointer]
+            - button "原文" [ref=e766] [cursor=pointer]
+            - button "差异" [ref=e767] [cursor=pointer]
+            - button "历史" [ref=e768] [cursor=pointer]
+        - article [ref=e770]:
+          - heading "当前执行结果" [level=3] [ref=e771]
+          - generic [ref=e772]: 等待首次执行。结构化视图会把命令输出整理成更容易阅读的摘要与预览。

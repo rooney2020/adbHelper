@@ -1,0 +1,45 @@
+{
+  "project": "adbHelper",
+  "version": "0.1.0",
+  "current_stage": "implementation",
+  "current_task": "I001",
+  "stages": {
+    "requirement": {
+      "status": "done",
+      "updated": "2026-05-12"
+    },
+    "architecture": {
+      "status": "done",
+      "updated": "2026-05-12"
+    },
+    "prototype": {
+      "status": "done",
+      "updated": "2026-05-12"
+    },
+    "planning": {
+      "status": "pending"
+    },
+    "implementation": {
+      "status": "in_progress",
+      "updated": "2026-05-12"
+    },
+    "quality": {
+      "status": "pending"
+    },
+    "deployment": {
+      "status": "pending"
+    }
+  },
+  "tasks_completed": [
+    "I001-history-list-stub",
+    "I001-export-record-link",
+    "I001-result-search-highlight"
+  ],
+  "tasks_total": 6,
+  "blocked": [],
+  "decisions_pending": [
+    "安装包形态优先级",
+    "适配元数据来源策略"
+  ],
+  "last_context": "实现阶段已补齐 history.list stub 链路、导出使用最近一次执行 recordId，并为结果工作区加入关键词搜索与高亮。"
+}

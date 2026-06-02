@@ -1,0 +1,98 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "设备信息" [ref=e10] [cursor=pointer]
+        - button "备份与恢复" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - button "当前设备：加载中" [ref=e15] [cursor=pointer]:
+        - generic [ref=e16]: 当前设备：加载中
+      - button "操作" [disabled] [ref=e20]:
+        - generic [ref=e21]: 操作
+      - button "打开设置中心" [ref=e23] [cursor=pointer]
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - paragraph [ref=e29]: 面板
+        - generic [ref=e30]:
+          - button "新增面板" [ref=e31] [cursor=pointer]
+          - button "收起命令面板" [ref=e32] [cursor=pointer]
+      - generic [ref=e34]:
+        - button "常用排障 3" [ref=e35] [cursor=pointer]:
+          - generic [ref=e36]:
+            - strong [ref=e37]: 常用排障
+            - generic [ref=e38]: "3"
+        - button "安装部署 3" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]:
+            - strong [ref=e41]: 安装部署
+            - generic [ref=e42]: "3"
+        - button "系统诊断 3" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]:
+            - strong [ref=e45]: 系统诊断
+            - generic [ref=e46]: "3"
+    - generic [ref=e48]:
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: 命令列表
+          - heading "常用排障" [level=3] [ref=e52]
+          - paragraph [ref=e53]: 设备连接、状态确认与基础探测
+        - button "添加命令" [ref=e54] [cursor=pointer]
+      - generic [ref=e55]:
+        - generic [ref=e56]: 命令块 3
+        - generic [ref=e57]: 当前选中：adb devices
+      - generic [ref=e58]:
+        - article [ref=e59]:
+          - generic [ref=e60]:
+            - button "adb devices 列出设备、传输方式和基础标识。" [ref=e61] [cursor=pointer]:
+              - strong [ref=e62]: adb devices
+              - generic [ref=e63]: 列出设备、传输方式和基础标识。
+            - generic [ref=e65]: 查看型
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - generic [ref=e68]: 命令主题：adb devices
+              - generic [ref=e69]: 支持
+              - generic [ref=e70]: 风险 低
+            - generic [ref=e73]:
+              - checkbox "-l 选项（详细模式）" [checked] [ref=e74]
+              - generic [ref=e75]: "-l 选项（详细模式）"
+        - article [ref=e76]:
+          - generic [ref=e77]:
+            - button "adb get-state 快速检查当前设备是否在线。" [ref=e78] [cursor=pointer]:
+              - strong [ref=e79]: adb get-state
+              - generic [ref=e80]: 快速检查当前设备是否在线。
+            - generic [ref=e82]: 查看型
+        - article [ref=e83]:
+          - generic [ref=e84]:
+            - button "adb version 查看当前 adb 客户端与服务端版本信息。" [ref=e85] [cursor=pointer]:
+              - strong [ref=e86]: adb version
+              - generic [ref=e87]: 查看当前 adb 客户端与服务端版本信息。
+            - generic [ref=e89]: 查看型
+    - generic [ref=e91]:
+      - generic [ref=e92]:
+        - paragraph [ref=e94]: 命令执行与结果工作区
+        - generic [ref=e95]:
+          - button "收起工作区侧栏" [ref=e96] [cursor=pointer]
+          - button "最大化工作区" [ref=e98] [cursor=pointer]
+      - generic [ref=e100]:
+        - textbox "可在这里微调选中命令块的原始命令" [ref=e101]: adb -s 94266526 shell ls -la /
+        - button "执行并解析" [disabled] [ref=e103]
+      - generic [ref=e104]:
+        - generic [ref=e105]:
+          - generic [ref=e106]:
+            - paragraph [ref=e107]: 结果工作区
+            - generic [ref=e108]:
+              - textbox "搜索结果关键词，例如 fallback / Pixel" [ref=e109]
+              - generic [ref=e110]:
+                - button "导出" [disabled] [ref=e112]
+                - generic [ref=e113]: 匹配 0
+          - generic [ref=e114]:
+            - button "结构化" [ref=e115] [cursor=pointer]
+            - button "原文" [ref=e116] [cursor=pointer]
+            - button "差异" [ref=e117] [cursor=pointer]
+            - button "历史" [ref=e118] [cursor=pointer]
+        - article [ref=e120]:
+          - heading "当前执行结果" [level=3] [ref=e121]
+          - generic [ref=e122]: 等待首次执行。结构化视图会把命令输出整理成更容易阅读的摘要与预览。

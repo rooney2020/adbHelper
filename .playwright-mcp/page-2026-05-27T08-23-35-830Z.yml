@@ -1,0 +1,115 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "按键模拟" [active] [ref=e10] [cursor=pointer]
+        - button "布局查看器" [ref=e11] [cursor=pointer]
+        - button "Monkey" [ref=e12] [cursor=pointer]
+        - button "性能测试" [ref=e13] [cursor=pointer]
+        - button "Dumpsys" [ref=e14] [cursor=pointer]
+        - button "设备信息" [ref=e15] [cursor=pointer]
+        - button "备份与恢复" [ref=e16] [cursor=pointer]
+    - generic [ref=e17]:
+      - button "当前设备：is4pr" [ref=e33] [cursor=pointer]:
+        - generic [ref=e21]: 当前设备：is4pr
+      - button "操作" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 操作
+      - button "打开设置中心" [ref=e28] [cursor=pointer]
+  - main [ref=e215]:
+    - generic [ref=e216]:
+      - generic [ref=e217]:
+        - generic [ref=e218]:
+          - heading "按键模拟" [level=3] [ref=e219]
+          - paragraph [ref=e220]: 点击即可下发 input keyevent / tap / swipe，并支持宏编排。
+        - generic [ref=e221]:
+          - generic [ref=e222]: 当前设备：is4pr
+          - generic [ref=e223]: 状态：就绪
+      - generic [ref=e224]:
+        - complementary [ref=e225]:
+          - button "常用快捷栏" [ref=e226] [cursor=pointer]:
+            - strong [ref=e227]: 常用快捷栏
+          - button "按键编排" [ref=e228] [cursor=pointer]:
+            - strong [ref=e229]: 按键编排
+          - button "宏命令" [ref=e230] [cursor=pointer]:
+            - strong [ref=e231]: 宏命令
+        - generic [ref=e232]:
+          - generic [ref=e233]:
+            - paragraph [ref=e234]: 常用按键快捷栏
+            - button "新增动作" [ref=e236] [cursor=pointer]
+          - paragraph [ref=e237]: 卡片支持拖拽排序与尺寸调整。按键/点击支持单击与长按；点击与滑动支持直接输入坐标，点击可在弹窗里基于截图取点。
+          - generic [ref=e238]:
+            - article [ref=e239]:
+              - generic [ref=e240]:
+                - strong [ref=e241]: Home
+                - generic [ref=e242]: 按键
+              - paragraph [ref=e243]: 单击 KEYCODE_HOME
+              - generic [ref=e244]:
+                - button "执行" [ref=e245] [cursor=pointer]
+                - button "编辑" [ref=e246] [cursor=pointer]
+                - button "删除" [ref=e247] [cursor=pointer]
+            - article [ref=e248]:
+              - generic [ref=e249]:
+                - strong [ref=e250]: Back
+                - generic [ref=e251]: 按键
+              - paragraph [ref=e252]: 单击 KEYCODE_BACK
+              - generic [ref=e253]:
+                - button "执行" [ref=e254] [cursor=pointer]
+                - button "编辑" [ref=e255] [cursor=pointer]
+                - button "删除" [ref=e256] [cursor=pointer]
+            - article [ref=e257]:
+              - generic [ref=e258]:
+                - strong [ref=e259]: Recent Apps
+                - generic [ref=e260]: 按键
+              - paragraph [ref=e261]: 单击 KEYCODE_APP_SWITCH
+              - generic [ref=e262]:
+                - button "执行" [ref=e263] [cursor=pointer]
+                - button "编辑" [ref=e264] [cursor=pointer]
+                - button "删除" [ref=e265] [cursor=pointer]
+            - article [ref=e266]:
+              - generic [ref=e267]:
+                - strong [ref=e268]: 电源键
+                - generic [ref=e269]: 按键
+              - paragraph [ref=e270]: 单击 KEYCODE_POWER
+              - generic [ref=e271]:
+                - button "执行" [ref=e272] [cursor=pointer]
+                - button "编辑" [ref=e273] [cursor=pointer]
+                - button "删除" [ref=e274] [cursor=pointer]
+            - article [ref=e275]:
+              - generic [ref=e276]:
+                - strong [ref=e277]: 音量+
+                - generic [ref=e278]: 按键
+              - paragraph [ref=e279]: 单击 KEYCODE_VOLUME_UP
+              - generic [ref=e280]:
+                - button "执行" [ref=e281] [cursor=pointer]
+                - button "编辑" [ref=e282] [cursor=pointer]
+                - button "删除" [ref=e283] [cursor=pointer]
+            - article [ref=e284]:
+              - generic [ref=e285]:
+                - strong [ref=e286]: 音量-
+                - generic [ref=e287]: 按键
+              - paragraph [ref=e288]: 单击 KEYCODE_VOLUME_DOWN
+              - generic [ref=e289]:
+                - button "执行" [ref=e290] [cursor=pointer]
+                - button "编辑" [ref=e291] [cursor=pointer]
+                - button "删除" [ref=e292] [cursor=pointer]
+            - article [ref=e293]:
+              - generic [ref=e294]:
+                - strong [ref=e295]: 静音
+                - generic [ref=e296]: 按键
+              - paragraph [ref=e297]: 单击 KEYCODE_MUTE
+              - generic [ref=e298]:
+                - button "执行" [ref=e299] [cursor=pointer]
+                - button "编辑" [ref=e300] [cursor=pointer]
+                - button "删除" [ref=e301] [cursor=pointer]
+            - article [ref=e302]:
+              - generic [ref=e303]:
+                - strong [ref=e304]: 菜单
+                - generic [ref=e305]: 按键
+              - paragraph [ref=e306]: 单击 KEYCODE_MENU
+              - generic [ref=e307]:
+                - button "执行" [ref=e308] [cursor=pointer]
+                - button "编辑" [ref=e309] [cursor=pointer]
+                - button "删除" [ref=e310] [cursor=pointer]

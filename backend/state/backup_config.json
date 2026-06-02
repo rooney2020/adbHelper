@@ -1,0 +1,13 @@
+{
+  "versionProp": "ro.build.display.id",
+  "backupPaths": [
+    "/system/framework",
+    "/system/app",
+    "/system/priv-app"
+  ],
+  "restorePaths": [
+    "/system/framework",
+    "/system/app",
+    "/system/priv-app"
+  ]
+}

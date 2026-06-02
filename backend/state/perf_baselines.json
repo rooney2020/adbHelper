@@ -1,0 +1,27 @@
+[
+  {
+    "id": "mpnn6209",
+    "name": "1",
+    "package": "com.test.carvoice",
+    "metrics": {
+      "timestamp": 1779860783267,
+      "package": "com.test.carvoice",
+      "totalFrames": null,
+      "jankyFrames": null,
+      "jankyPercent": null,
+      "percentile50": null,
+      "percentile90": null,
+      "percentile95": null,
+      "percentile99": null,
+      "missedVsync": null,
+      "batteryLevel": 0,
+      "temperature": 0,
+      "currentNow": null,
+      "readBytes": 0,
+      "writeBytes": 0,
+      "cpuPercent": 3.3,
+      "memoryPssKb": 16250
+    },
+    "createdAt": 1779860804265
+  }
+]

@@ -1,0 +1,98 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "设备信息" [ref=e10] [cursor=pointer]
+        - button "备份与恢复" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - button "当前设备：加载中" [ref=e15] [cursor=pointer]:
+        - generic [ref=e16]: 当前设备：加载中
+      - button "操作" [disabled] [ref=e20]:
+        - generic [ref=e21]: 操作
+      - button "打开设置中心" [ref=e23] [cursor=pointer]
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - paragraph [ref=e29]: 面板
+        - generic [ref=e30]:
+          - button "新增面板" [ref=e31] [cursor=pointer]
+          - button "收起命令面板" [ref=e32] [cursor=pointer]
+      - generic [ref=e34]:
+        - button "常用排障 3" [ref=e35] [cursor=pointer]:
+          - generic [ref=e36]:
+            - strong [ref=e37]: 常用排障
+            - generic [ref=e38]: "3"
+        - button "安装部署 3" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]:
+            - strong [ref=e41]: 安装部署
+            - generic [ref=e42]: "3"
+        - button "系统诊断 3" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]:
+            - strong [ref=e45]: 系统诊断
+            - generic [ref=e46]: "3"
+    - generic [ref=e47]:
+      - generic [ref=e48]:
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: 命令列表
+          - heading "常用排障" [level=3] [ref=e51]
+          - paragraph [ref=e52]: 设备连接、状态确认与基础探测
+        - button "添加命令" [ref=e53] [cursor=pointer]
+      - generic [ref=e54]:
+        - generic [ref=e55]: 命令块 3
+        - generic [ref=e56]: 当前选中：adb devices
+      - generic [ref=e57]:
+        - article [ref=e58]:
+          - generic [ref=e59]:
+            - button "adb devices 列出设备、传输方式和基础标识。" [ref=e60] [cursor=pointer]:
+              - strong [ref=e61]: adb devices
+              - generic [ref=e62]: 列出设备、传输方式和基础标识。
+            - generic [ref=e64]: 查看型
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - generic [ref=e67]: 命令主题：adb devices
+              - generic [ref=e68]: 支持
+              - generic [ref=e69]: 风险 低
+            - generic [ref=e72]:
+              - checkbox "-l 选项（详细模式）" [checked] [ref=e73]
+              - generic [ref=e74]: "-l 选项（详细模式）"
+        - article [ref=e75]:
+          - generic [ref=e76]:
+            - button "adb get-state 快速检查当前设备是否在线。" [ref=e77] [cursor=pointer]:
+              - strong [ref=e78]: adb get-state
+              - generic [ref=e79]: 快速检查当前设备是否在线。
+            - generic [ref=e81]: 查看型
+        - article [ref=e82]:
+          - generic [ref=e83]:
+            - button "adb version 查看当前 adb 客户端与服务端版本信息。" [ref=e84] [cursor=pointer]:
+              - strong [ref=e85]: adb version
+              - generic [ref=e86]: 查看当前 adb 客户端与服务端版本信息。
+            - generic [ref=e88]: 查看型
+    - generic [ref=e89]:
+      - generic [ref=e90]:
+        - paragraph [ref=e92]: 命令执行与结果工作区
+        - generic [ref=e93]:
+          - button "收起工作区侧栏" [ref=e94] [cursor=pointer]
+          - button "最大化工作区" [ref=e96] [cursor=pointer]
+      - generic [ref=e98]:
+        - textbox "可在这里微调选中命令块的原始命令" [ref=e99]: adb devices -l
+        - button "执行并解析" [disabled] [ref=e101]
+      - generic [ref=e102]:
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - paragraph [ref=e105]: 结果工作区
+            - generic [ref=e106]:
+              - textbox "搜索结果关键词，例如 fallback / Pixel" [ref=e107]
+              - generic [ref=e108]:
+                - button "导出" [disabled] [ref=e110]
+                - generic [ref=e111]: 匹配 0
+          - generic [ref=e112]:
+            - button "结构化" [ref=e113] [cursor=pointer]
+            - button "原文" [ref=e114] [cursor=pointer]
+            - button "差异" [ref=e115] [cursor=pointer]
+            - button "历史" [ref=e116] [cursor=pointer]
+        - article [ref=e118]:
+          - heading "当前执行结果" [level=3] [ref=e119]
+          - generic [ref=e120]: 等待首次执行。结构化视图会把命令输出整理成更容易阅读的摘要与预览。

@@ -1,0 +1,12 @@
+[      59ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102
+[  171936ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102
+[  174307ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779413939337:0
+[  174307ms] [ERROR] [vite] Failed to reload /src/renderer/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
+[  211132ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779413976042:0
+[  236584ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414001219:0
+[  255572ms] The requested module '/src/renderer/App.tsx?t=1779414020639' does not provide an export named 'default'
+[  255883ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414020699:0
+[  274467ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414039354:0
+[  424310ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414188921:0
+[  433604ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414198518:0
+[  434902ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102

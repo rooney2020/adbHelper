@@ -1,0 +1,36 @@
+contract: renderer-to-main
+version: 1.0.0
+provider: electron-main
+consumer: renderer-shell
+channels:
+  - name: device.list
+    input: {}
+    output:
+      type: DeviceSummary[]
+      description: 当前可见设备列表与基础状态
+    errors: [ADB_NOT_FOUND, DEVICE_LIST_FAILED]
+  - name: device.probe
+    input:
+      deviceId: string
+    output:
+      type: DeviceCapabilityReport
+      description: 设备 capability 探测结果
+    errors: [DEVICE_OFFLINE, PROBE_TIMEOUT]
+  - name: command.run
+    input:
+      deviceId: string
+      commandId: string
+      rawCommand: string?
+      args: string[]
+    output:
+      type: CommandExecutionResult
+      description: 执行结果、结构化结果和原始输出引用
+    errors: [UNSUPPORTED_COMMAND, EXEC_TIMEOUT, EXEC_FAILED]
+  - name: result.export
+    input:
+      recordId: string
+      format: markdown|json|text
+    output:
+      type: ExportResult
+      description: 导出文件路径与摘要
+    errors: [RECORD_NOT_FOUND, EXPORT_FAILED]

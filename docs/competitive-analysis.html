@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ADB Helper 竞品分析</title>
+    <style>
+      :root {
+        --bg: #f4efe6;
+        --paper: #fffaf2;
+        --ink: #1e2430;
+        --muted: #5e6777;
+        --line: #d6cab6;
+        --accent: #185c4a;
+        --accent-soft: #dcefe8;
+        --warn: #9d4a1d;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, #efe7d8 0%, var(--bg) 100%);
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 20px 64px;
+      }
+
+      .hero,
+      section {
+        background: rgba(255, 250, 242, 0.95);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 18px 50px rgba(52, 41, 25, 0.08);
+        margin-bottom: 20px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      h1, h2, h3 { margin: 0 0 12px; }
+      p, li { line-height: 1.7; }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .card {
+        padding: 18px;
+        border-radius: 18px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 14px;
+      }
+
+      th, td {
+        border: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #efe5d3;
+      }
+
+      .note {
+        color: var(--muted);
+      }
+
+      .callout {
+        padding: 16px 18px;
+        border-left: 4px solid var(--warn);
+        background: #fff1e6;
+        border-radius: 14px;
+      }
+
+      @media (max-width: 720px) {
+        main { padding: 24px 14px 40px; }
+        .hero, section { padding: 18px; border-radius: 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Competitive Analysis</p>
+        <h1>ADB Helper 竞品分析</h1>
+        <p>
+          参考 Android Studio Device Explorer、Android Studio Logcat 与 ADB AppControl，提炼本项目在设备上下文、结果展示、预设组织和兼容性提示上的设计基线。
+        </p>
+      </section>
+
+      <section>
+        <h2>竞品定位</h2>
+        <div class="grid">
+          <article class="card">
+            <div class="tag">Android Studio</div>
+            <h3>Device Explorer</h3>
+            <p>擅长“先选设备，再进入特定资源视图”的工作流，适合作为设备上下文与专用结果页的参考。</p>
+          </article>
+          <article class="card">
+            <div class="tag">Android Studio</div>
+            <h3>Logcat</h3>
+            <p>擅长大文本结果的过滤、格式切换和噪音抑制，适合作为查看型命令结果页的参考。</p>
+          </article>
+          <article class="card">
+            <div class="tag">第三方 GUI</div>
+            <h3>ADB AppControl</h3>
+            <p>擅长把高频 adb 操作收敛成 GUI 工作台、预设和收藏入口，但跨平台与适配透明度不足。</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>功能对比矩阵</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>功能维度</th>
+              <th>Device Explorer</th>
+              <th>Logcat</th>
+              <th>ADB AppControl</th>
+              <th>本项目</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>多设备选择</td><td>✓</td><td>△</td><td>✓</td><td>✓</td></tr>
+            <tr><td>设备信息总览</td><td>△</td><td>✗</td><td>✓</td><td>✓</td></tr>
+            <tr><td>日志过滤</td><td>✗</td><td>✓</td><td>✓</td><td>✓</td></tr>
+            <tr><td>dumpsys 结构化结果</td><td>✗</td><td>✗</td><td>△</td><td>✓</td></tr>
+            <tr><td>收藏/预设</td><td>✗</td><td>△</td><td>✓</td><td>✓</td></tr>
+            <tr><td>原始命令兜底</td><td>✗</td><td>✓</td><td>✓</td><td>✓</td></tr>
+            <tr><td>兼容性提示</td><td>✗</td><td>△</td><td>△</td><td>✓</td></tr>
+            <tr><td>结果导出</td><td>△</td><td>△</td><td>△</td><td>✓</td></tr>
+            <tr><td>结构化视图</td><td>✗</td><td>△</td><td>✗</td><td>✓</td></tr>
+            <tr><td>跨平台桌面支持</td><td>△</td><td>△</td><td>✗</td><td>✓</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>必须借鉴</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>功能/设计</th>
+              <th>来源</th>
+              <th>我们的优化方向</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>显式设备上下文</td>
+              <td>Device Explorer</td>
+              <td>所有命令页顶部固定展示当前设备、连接状态与 capability 摘要。</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>大结果过滤与格式切换</td>
+              <td>Logcat</td>
+              <td>为 dumpsys、logcat、am、cmd 提供搜索、高亮、折叠、原文/结构化双视图。</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>收藏与预设</td>
+              <td>ADB AppControl</td>
+              <td>支持收藏、最近使用、团队模板和批量入口，压缩全量命令目录的导航成本。</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>GUI 封装高频命令</td>
+              <td>ADB AppControl</td>
+              <td>保留原始命令兜底，同时把高频场景抽象成任务模板。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>差异化创新</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>Capability 矩阵</h3>
+            <p>执行前先判断不同 Android 版本与 ROM 的命令支持度，并给出替代链路。</p>
+          </article>
+          <article class="card">
+            <h3>结构化查看页</h3>
+            <p>针对 dumpsys、am、cmd、settings 和 logcat 做语义分段与双视图展示。</p>
+          </article>
+          <article class="card">
+            <h3>全量命令信息架构</h3>
+            <p>以分类目录、搜索、收藏、最近使用和原始命令模式承载“全部 adb 命令”范围。</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="callout">
+          结论：ADB Helper 不应只是“命令按钮集合”。真正的竞争力来自跨版本/ROM capability 适配、查看型结果可读性和全量命令导航能力。
+        </div>
+        <p class="note">本报告根据公开文档与产品说明整理，用于 requirement 阶段的设计借鉴与范围收敛。</p>
+      </section>
+    </main>
+  </body>
+</html>

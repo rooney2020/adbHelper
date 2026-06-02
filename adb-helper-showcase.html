@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADB Helper · 可视化 ADB 工作台架构设计</title>
+<style>
+html{font-size:16.5px}
+:root{--b:#1D4ED8;--bl:#3B82F6;--bbg:#EFF6FF;--g:#059669;--gbg:#ECFDF5;--o:#EA580C;--obg:#FFF7ED;--r:#DC2626;--rbg:#FEF2F2;--p:#7C3AED;--pbg:#F5F3FF;--y:#D97706;--ybg:#FFFBEB;--t:#0F172A;--ts:#334155;--bd:#D8E1EC;--bg:#FFFFFF}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--t);line-height:1.85;overflow-x:hidden;font-size:16px;position:relative}
+.wrap{max-width:1680px;margin:0 auto;padding:0 60px;position:relative;z-index:1}
+
+.watermark{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;opacity:.06}
+.watermark::before{content:"";position:absolute;inset:-40%;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='420' height='220' viewBox='0 0 420 220'><text x='40' y='130' font-family='PingFang SC, Microsoft YaHei, sans-serif' font-size='38' font-weight='700' fill='%231D4ED8'>ADB Helper</text></svg>");background-repeat:repeat;transform:rotate(-22deg)}
+
+nav{position:sticky;top:0;z-index:200;height:58px;background:rgba(255,255,255,.94);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid rgba(15,23,42,.06);display:flex;align-items:center;padding:0 60px;gap:6px;overflow-x:auto}
+nav::-webkit-scrollbar{display:none}
+.nav-brand{font-size:15px;font-weight:800;color:var(--t);white-space:nowrap;padding-right:1.5rem;margin-right:1rem;border-right:1px solid rgba(15,23,42,.08);flex-shrink:0}
+nav a{font-size:14px;color:var(--ts);text-decoration:none;padding:.45rem 1rem;border-radius:980px;white-space:nowrap;transition:all .2s;font-weight:600;cursor:pointer}
+nav a:hover{color:var(--b);background:var(--bbg)}
+nav a.active{color:#fff;background:var(--b);font-weight:700}
+@media(max-width:900px){html{font-size:16px}.wrap{padding:0 24px}nav{padding:0 20px}}
+
+.hero{background:linear-gradient(135deg,#0F172A 0%,#1D4ED8 50%,#059669 100%);color:#fff;padding:4.5rem 2rem 3.5rem;text-align:center;position:relative;overflow:hidden;z-index:1}
+.hero::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 55% at 50% -5%,rgba(255,255,255,.1) 0%,transparent 65%)}
+.hero-eyebrow{font-size:13px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;opacity:.8;margin-bottom:1rem}
+.hero h1{font-size:clamp(2.2rem,4.6vw,3.6rem);font-weight:800;letter-spacing:-.025em;line-height:1.16;margin-bottom:1rem}
+.hero-sub{font-size:1.1rem;opacity:.92;max-width:880px;margin:0 auto 1.8rem;line-height:1.8}
+.hero-pills{display:flex;justify-content:center;gap:.6rem;flex-wrap:wrap}
+.hero-pill{font-size:13px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);padding:.34rem 1rem;border-radius:980px;letter-spacing:.04em;font-weight:600}
+
+main{padding:0 0 5rem;position:relative;z-index:1}
+section{padding:4.2rem 0;border-bottom:1px solid rgba(15,23,42,.05);scroll-margin-top:68px}
+section:last-child{border-bottom:none}
+.eyebrow{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--b);margin-bottom:.55rem}
+h2.st{font-size:clamp(1.7rem,3vw,2.4rem);font-weight:800;letter-spacing:-.02em;color:var(--t);margin-bottom:.55rem;line-height:1.18}
+.sec-desc{font-size:1.04rem;color:var(--ts);margin-bottom:2.5rem;font-weight:450;line-height:1.8}
+h3{font-size:1.32rem;font-weight:800;margin:2.2rem 0 1rem;color:var(--t);letter-spacing:-.01em}
+h4{font-size:1.05rem;font-weight:700;color:var(--b);margin:1.4rem 0 .7rem}
+
+.gc{background:#ffffff;border:1px solid rgba(15,23,42,.06);border-radius:18px;padding:1.65rem 1.85rem;margin-bottom:1.1rem;box-shadow:0 8px 28px rgba(15,23,42,.05);transition:transform .2s,box-shadow .3s}
+.gc:hover{box-shadow:0 14px 42px rgba(15,23,42,.09);transform:translateY(-2px)}
+.gc-label{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b);margin-bottom:.78rem}
+.gc-title{font-size:1.02rem;color:var(--t);font-weight:800;margin-bottom:.55rem;line-height:1.4}
+.gc-body{font-size:.9rem;color:var(--ts);line-height:1.85}
+
+.tbl{border-radius:16px;border:1px solid rgba(15,23,42,.06);background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04);overflow:hidden;margin-bottom:1.5rem}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+thead th{background:#F8FAFC;color:var(--ts);font-size:.86rem;font-weight:700;letter-spacing:.03em;text-align:left;padding:1.0rem 1.2rem;border-bottom:1px solid rgba(15,23,42,.06)}
+tbody td{padding:.95rem 1.2rem;border-bottom:1px solid rgba(15,23,42,.035);color:var(--ts);vertical-align:top;line-height:1.7}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(29,78,216,.02)}
+table strong{color:var(--t)}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem}
+@media(max-width:768px){.g2,.g3,.g4,.g5{grid-template-columns:1fr}}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.1rem;margin-bottom:2.4rem}
+.kpi-card{background:#fff;border-radius:16px;padding:1.65rem 1.4rem;border-top:4px solid var(--b);box-shadow:0 6px 24px rgba(0,0,0,.05);text-align:center}
+.kpi-card .v{font-size:2.25rem;font-weight:800;color:var(--b);line-height:1}
+.kpi-card .l{font-size:.85rem;color:var(--ts);margin-top:.5rem;font-weight:500;line-height:1.5}
+.kpi-card:nth-child(2){border-color:var(--g)}.kpi-card:nth-child(2) .v{color:var(--g)}
+.kpi-card:nth-child(3){border-color:var(--p)}.kpi-card:nth-child(3) .v{color:var(--p)}
+.kpi-card:nth-child(4){border-color:var(--o)}.kpi-card:nth-child(4) .v{color:var(--o)}
+.kpi-card:nth-child(5){border-color:var(--r)}.kpi-card:nth-child(5) .v{color:var(--r)}
+
+.callout{border-radius:14px;padding:1.1rem 1.5rem;font-size:.98rem;margin-bottom:1.1rem;font-weight:500;line-height:1.8}
+.ci{background:var(--bbg);border:1px solid rgba(29,78,216,.12);color:#00418a}
+.cw{background:var(--obg);border:1px solid rgba(234,88,12,.12);color:#9a3412}
+.cg{background:var(--gbg);border:1px solid rgba(5,150,105,.12);color:#065f46}
+.cr{background:var(--rbg);border:1px solid rgba(220,38,38,.12);color:#991b1b}
+
+.tree{background:#0B1220;color:#E2E8F0;border:1px solid #1E293B;border-radius:14px;padding:1.5rem 1.8rem;font-family:"SF Mono","JetBrains Mono","Cascadia Code",Consolas,Monaco,monospace;font-size:.88rem;line-height:1.95;overflow-x:auto;box-shadow:0 10px 30px rgba(15,23,42,.18);white-space:pre;margin-bottom:1.5rem}
+.tree .h{color:#86EFAC;font-weight:600}
+.tree .k{color:#BBF7D0}
+.tree .v{color:#FDE68A}
+.tree .c{color:#94A3B8}
+
+.tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:.74rem;font-weight:700;margin:0 4px 4px 0}
+.tag-b{background:#DBEAFE;color:#1E40AF}
+.tag-g{background:#D1FAE5;color:#065F46}
+.tag-p{background:#EDE9FE;color:#5B21B6}
+.tag-o{background:#FED7AA;color:#9A3412}
+.tag-r{background:#FECACA;color:#7F1D1D}
+.tag-y{background:#FEF3C7;color:#92400E}
+
+.flow-row{display:flex;align-items:stretch;gap:0;margin:1.5rem 0}
+.flow-step{flex:1;background:#fff;border:1px solid rgba(15,23,42,.08);padding:1.2rem .8rem;text-align:center;position:relative}
+.flow-step:first-child{border-radius:12px 0 0 12px}
+.flow-step:last-child{border-radius:0 12px 12px 0}
+.flow-step:not(:last-child)::after{content:'';position:absolute;right:-14px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:8px solid transparent;border-bottom:8px solid transparent;border-left:10px solid var(--bl);z-index:1}
+.flow-step .num{font-size:2rem;font-weight:800;color:var(--bl);line-height:1}
+.flow-step .title{font-size:.84rem;font-weight:700;margin-top:.4rem;color:var(--t)}
+.flow-step .desc{font-size:.74rem;color:var(--ts);margin-top:.3rem;line-height:1.5}
+
+.arch-layer{display:flex;align-items:stretch;gap:0;margin:1.5rem 0;flex-direction:column}
+.arch-box{background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:14px;padding:1.4rem 1.8rem;margin-bottom:.6rem;display:flex;align-items:center;gap:1.5rem;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+.arch-box .layer-num{font-size:2rem;font-weight:800;color:var(--bl);min-width:3rem;text-align:center}
+.arch-box .layer-info{flex:1}
+.arch-box .layer-name{font-size:1.05rem;font-weight:700;color:var(--t);margin-bottom:.3rem}
+.arch-box .layer-tech{font-size:.82rem;color:var(--ts)}
+.arch-arrow{text-align:center;color:var(--bl);font-size:1.2rem;margin:-0.2rem 0;font-weight:700}
+.arch-box:nth-child(1) .layer-num{color:var(--p)}
+.arch-box:nth-child(3) .layer-num{color:var(--b)}
+.arch-box:nth-child(5) .layer-num{color:var(--g)}
+
+.feature-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}
+@media(max-width:900px){.feature-grid{grid-template-columns:1fr}}
+.feature-item{display:flex;align-items:flex-start;gap:.9rem;padding:1.1rem 1.3rem;background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:12px;box-shadow:0 4px 14px rgba(15,23,42,.03);transition:transform .2s,box-shadow .3s}
+.feature-item:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.08)}
+.feature-icon{font-size:1.6rem;min-width:2.2rem;text-align:center;line-height:1}
+.feature-info{flex:1}
+.feature-info .name{font-size:.96rem;font-weight:700;color:var(--t);margin-bottom:.2rem}
+.feature-info .desc{font-size:.82rem;color:var(--ts);line-height:1.6}
+
+.cat-tag{display:inline-block;padding:3px 10px;border-radius:6px;font-size:.76rem;font-weight:600;margin:0 5px 7px 0}
+.cat-tag:nth-child(1){background:#DBEAFE;color:#1E40AF}
+.cat-tag:nth-child(2){background:#D1FAE5;color:#065F46}
+.cat-tag:nth-child(3){background:#EDE9FE;color:#5B21B6}
+.cat-tag:nth-child(4){background:#FED7AA;color:#9A3412}
+.cat-tag:nth-child(5){background:#FECACA;color:#7F1D1D}
+.cat-tag:nth-child(6){background:#FEF3C7;color:#92400E}
+.cat-tag:nth-child(7){background:#CFFAFE;color:#155E75}
+.cat-tag:nth-child(8){background:#FCE7F3;color:#9D174D}
+.cat-tag:nth-child(9){background:#E0E7FF;color:#3730A3}
+.cat-tag:nth-child(10){background:#D1FAE5;color:#064E3B}
+.cat-tag:nth-child(11){background:#FEE2E2;color:#991B1B}
+.cat-tag:nth-child(12){background:#E5E7EB;color:#374151}
+.cat-tag:nth-child(13){background:#FEF3C7;color:#78350F}
+
+main>section{display:none}
+main>section:first-of-type{display:block}
+</style>
+</head>
+<body>
+
+<div class="watermark"></div>
+
+<nav>
+  <div class="nav-brand">ADB Helper</div>
+  <a data-target="#overview">概览</a>
+  <a data-target="#architecture">技术架构</a>
+  <a data-target="#features">核心功能</a>
+  <a data-target="#catalog">命令目录</a>
+  <a data-target="#rendering">结果渲染</a>
+  <a data-target="#structure">项目结构</a>
+  <a data-target="#constraints">设计约束</a>
+</nav>
+
+<div class="hero">
+  <p class="hero-eyebrow">Electron + React + Python · Cross-Platform Desktop App</p>
+  <h1>ADB Helper<br>可视化 ADB 工作台</h1>
+  <p class="hero-sub">面向 Android 开发与测试人员的跨平台桌面工具。将全部 adb 能力组织为可视化工作流，覆盖 13 个分类 200+ 条命令模板，提供结构化结果渲染、设备 Capability 探测、多维筛选 Logcat、备份恢复、性能监控等一站式功能。</p>
+  <div class="hero-pills">
+    <span class="hero-pill">200+ 命令模板</span>
+    <span class="hero-pill">13 个分类目录</span>
+    <span class="hero-pill">14 大功能模块</span>
+    <span class="hero-pill">3 层架构隔离</span>
+    <span class="hero-pill">Capability 优先执行</span>
+    <span class="hero-pill">跨平台桌面对标</span>
+  </div>
+</div>
+
+<div class="wrap">
+<main>
+
+<!-- ============ 概览 ============ -->
+<section id="overview">
+  <p class="eyebrow">第一章</p>
+  <h2 class="st">项目概览：目标 · 定位 · 关键指标</h2>
+  <p class="sec-desc">ADB Helper 是一个跨平台桌面应用（Ubuntu / Windows / macOS），核心目标是将全部 adb 命令能力组织为可视化工作流，让用户无需记忆复杂命令行参数即可完成所有 adb 操作，并对不同 ROM 和 Android 版本的兼容性做显式识别与降级处理。</p>
+
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="v">200+</div><div class="l">ADB 命令模板<br>覆盖 13 个分类</div></div>
+    <div class="kpi-card"><div class="v">14</div><div class="l">功能模块<br>设备管理到 Monkey 测试</div></div>
+    <div class="kpi-card"><div class="v">3</div><div class="l">技术栈层<br>React · Electron · Python</div></div>
+    <div class="kpi-card"><div class="v">10000+</div><div class="l">代码行数<br>TypeScript + Python</div></div>
+    <div class="kpi-card"><div class="v">3</div><div class="l">目标平台<br>Ubuntu / Windows / macOS</div></div>
+  </div>
+
+  <h3>核心设计目标</h3>
+  <div class="g3">
+    <div class="gc" style="border-top:4px solid var(--b)">
+      <p class="gc-label">目标 01 · 全量覆盖</p>
+      <p class="gc-title">全部 adb 能力可视化</p>
+      <p class="gc-body">不靠静态按钮堆叠，通过"分类目录 + 搜索 + 收藏 + 原始命令模式"组合承载全部 adb 命令族，覆盖 adb、shell、am、pm、ime、content、wm、dumpsys、input、svc 等全部子命令。</p>
+    </div>
+    <div class="gc" style="border-top:4px solid var(--g)">
+      <p class="gc-label">目标 02 · 兼容适配</p>
+      <p class="gc-title">Capability 优先执行</p>
+      <p class="gc-body">每条命令执行前自动探测设备 Capability，识别命令可用性、参数兼容性和降级替代方案。针对不同 Android 版本和厂商定制 ROM 给出显式的"支持 / 受限 / 不支持"状态。</p>
+    </div>
+    <div class="gc" style="border-top:4px solid var(--p)">
+      <p class="gc-label">目标 03 · 安全隔离</p>
+      <p class="gc-title">前后端三层架构</p>
+      <p class="gc-body">Renderer 层禁止直接访问 Node 能力或系统命令，所有执行请求经 Electron 主进程白名单 IPC 和 Python 后端适配层。高风险写操作触发二次确认弹窗。</p>
+    </div>
+  </div>
+
+  <h3>核心理念</h3>
+  <div class="callout ci"><strong>Capability 优先</strong>：所有 adb 操作必须先经过设备识别、能力探测和适配决策，禁止 UI 直接盲执行底层命令。当命令在特定 ROM / Android 版本上不可用时，系统自动给出降级替代方案和原因说明。</div>
+</section>
+
+<!-- ============ 技术架构 ============ -->
+<section id="architecture">
+  <p class="eyebrow">第二章</p>
+  <h2 class="st">技术架构：三层隔离 · 安全 IPC · 契约驱动</h2>
+  <p class="sec-desc">Renderer（React 19）→ Electron Main（IPC 路由）→ Python Backend（CLI），层层隔离、职责分明。</p>
+
+  <div class="arch-layer">
+    <div class="arch-box">
+      <div class="layer-num">L1</div>
+      <div class="layer-info">
+        <div class="layer-name">Renderer 渲染层 · React 19 + TypeScript + Vite 7</div>
+        <div class="layer-tech">App.tsx 主组件编排 9 个 Page 页面 + 3 个核心 Lib（catalog / outputRenderers / fallbackApi）。负责 UI 展示、状态管理、组件路由，禁止直接访问 Node 能力或系统命令。</div>
+      </div>
+      <div><span class="tag tag-p">React 19</span> <span class="tag tag-b">TypeScript</span> <span class="tag tag-p">Vite 7</span></div>
+    </div>
+    <div class="arch-arrow">↓ contextBridge IPC (preload.ts 白名单)</div>
+    <div class="arch-box">
+      <div class="layer-num">L2</div>
+      <div class="layer-info">
+        <div class="layer-name">Electron 主进程层 · Electron 35</div>
+        <div class="layer-tech">main.ts 负责窗口管理、菜单、自定义 winscope:// 协议、IPC 路由分发、Logcat 流管理、文件对话框、截屏录屏。通过 JSON stdout 与 Python 后端通信。</div>
+      </div>
+      <div><span class="tag tag-b">Electron 35</span> <span class="tag tag-o">IPC Router</span> <span class="tag tag-g">Logcat Stream</span></div>
+    </div>
+    <div class="arch-arrow">↓ execFile subprocess (JSON stdout)</div>
+    <div class="arch-box">
+      <div class="layer-num">L3</div>
+      <div class="layer-info">
+        <div class="layer-name">Python 后端执行层 · Python 3.10+</div>
+        <div class="layer-tech">cli.py 提供 25+ 子命令（devices / probe / run / history / backup / logcat / screenshots 等），封装 adb 子进程调用、stdout 解析、正则提取、设备探测、备份恢复、scrcpy 控制。所有输出为 JSON 格式。</div>
+      </div>
+      <div><span class="tag tag-g">Python 3.10+</span> <span class="tag tag-o">CLI 25+ cmds</span> <span class="tag tag-y">JSON stdout</span></div>
+    </div>
+  </div>
+
+  <h3>技术栈明细</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>类别</th><th>技术</th><th>版本</th><th>选择依据</th></tr></thead>
+    <tbody>
+      <tr><td><strong>桌面壳</strong></td><td>Electron</td><td>35.x</td><td>满足跨平台桌面分发，适合复杂文本展示和桌面集成</td></tr>
+      <tr><td><strong>前端</strong></td><td>React + TypeScript + Vite</td><td>React 19 / TS 5.8 / Vite 7</td><td>适合大型信息架构、复杂状态展示和组件化复用</td></tr>
+      <tr><td><strong>后端执行层</strong></td><td>Python</td><td>3.10+</td><td>便于封装 adb/fastboot 调用、适配规则、解析器与工具链</td></tr>
+      <tr><td><strong>样式系统</strong></td><td>CSS Variables</td><td>-</td><td>便于原型阶段沉淀视觉令牌，跨平台一致性强</td></tr>
+      <tr><td><strong>前端测试</strong></td><td>Vitest + Playwright</td><td>当前稳定版</td><td>覆盖组件、交互与 Electron renderer 行为</td></tr>
+      <tr><td><strong>后端测试</strong></td><td>Pytest</td><td>当前稳定版</td><td>覆盖命令适配、解析器与存储逻辑</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>架构原则</h3>
+  <div class="g2">
+    <div class="callout cw"><strong>前后端隔离</strong>：Renderer 禁止直接访问 Node 能力或系统命令，所有执行请求必须经 Electron 主进程白名单 IPC 和 Python 后端适配层。</div>
+    <div class="callout ci"><strong>Capability 优先</strong>：所有 adb 操作必须先经过设备识别、能力探测和适配决策，禁止 UI 直接盲执行底层命令。</div>
+    <div class="callout cg"><strong>结果双视图</strong>：文本型命令必须同时保留原始输出与结构化视图，解析失败时禁止丢失原文。</div>
+    <div class="callout cw"><strong>全量可导航</strong>："全部 adb 命令"必须通过分类目录、搜索、收藏和原始命令模式组合承载，禁止全部能力直接平铺成按钮堆叠。</div>
+  </div>
+</section>
+
+<!-- ============ 核心功能 ============ -->
+<section id="features">
+  <p class="eyebrow">第三章</p>
+  <h2 class="st">核心功能：14 大模块全覆盖</h2>
+  <p class="sec-desc">从设备连接到 Monkey 测试，覆盖 Android 开发与测试全流程。</p>
+
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="feature-icon">📱</div>
+      <div class="feature-info">
+        <div class="name">设备连接管理</div>
+        <div class="desc">列出已连接设备（序列号、状态、Android 版本、品牌/型号、传输方式），多 Display 识别与状态读取，Capability 自动探测。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">📋</div>
+      <div class="feature-info">
+        <div class="name">全量命令目录</div>
+        <div class="desc">13 个分类、200+ 条 adb/shell 命令模板，每条命令带有类型、风险等级、支持度、前置条件、降级方案和参数表单。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">⚡</div>
+      <div class="feature-info">
+        <div class="name">命令执行引擎</div>
+        <div class="desc">结构化参数表单自动组合 adb 命令，高风险写操作二次确认，原始命令模式支持自定义 adb 命令，自动记录执行历史。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">📊</div>
+      <div class="feature-info">
+        <div class="name">结果展示与分析</div>
+        <div class="desc">结构化预览 + 原始文本双视图，按命令类型智能渲染，关键词搜索高亮，历史分页浏览，任意两条记录逐行 diff 对比，导出 Markdown/TXT/JSON。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">📜</div>
+      <div class="feature-info">
+        <div class="name">Logcat 实时日志</div>
+        <div class="desc">实时流式捕获，进程名自动关联（ps 映射 PID→包名），多维度筛选（搜索词/正则、level、tag/pid/tid/package），自动文件轮转，导出 ZIP。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">ℹ️</div>
+      <div class="feature-info">
+        <div class="name">设备详情面板</div>
+        <div class="desc">基础信息、文件浏览器（上传/下载/删除/chmod）、应用管理（多用户列表/详情/卸载/APK 拉取）、用户管理、进程管理、截屏录屏。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">🔍</div>
+      <div class="feature-info">
+        <div class="name">Dumpsys 诊断</div>
+        <div class="desc">200+ 个 dumpsys 服务一键查询，常用服务结构化解析（activity/window/package/display/meminfo/battery/input/SurfaceFlinger 等）。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">💾</div>
+      <div class="feature-info">
+        <div class="name">备份与恢复</div>
+        <div class="desc">设备系统分区备份（/system 关键目录），版本化目录管理，恢复时自动 root + remount + push + sync + reboot，备份配置持久化。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">🖥️</div>
+      <div class="feature-info">
+        <div class="name">scrcpy 投屏集成</div>
+        <div class="desc">自动检测 scrcpy 可用性，多 Display 分别启动投屏，窗口位置/尺寸持久化，xwininfo 同步窗口几何信息。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">🎨</div>
+      <div class="feature-info">
+        <div class="name">Layout Inspector</div>
+        <div class="desc">uiautomator dump 获取 UI 树 XML，设备截图获取，Winscope 深度集成（UI 层级分析），自定义 winscope:// 协议。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">⌨️</div>
+      <div class="feature-info">
+        <div class="name">按键模拟</div>
+        <div class="desc">input tap（坐标点击）、input swipe（滑动）、input keyevent（按键事件）、input text（文本输入），截图辅助坐标定位。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">📐</div>
+      <div class="feature-info">
+        <div class="name">面板系统</div>
+        <div class="desc">可自定义命令面板持久化保存，面板间命令块拖拽/添加，左右面板折叠/展开，工作区最大化，宏任务（多步操作序列录制与回放）。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">📈</div>
+      <div class="feature-info">
+        <div class="name">性能监控</div>
+        <div class="desc">实时 CPU、内存、FPS 折线图，电池电量/充电状态/温度，可视化性能数据。</div>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon">🐵</div>
+      <div class="feature-info">
+        <div class="name">Monkey 测试</div>
+        <div class="desc">可视化参数配置（pct-touch、pct-motion、throttle 等），实时 logcat 异常高亮，一键终止与进程清理，测试报告自动生成。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 命令目录 ============ -->
+<section id="catalog">
+  <p class="eyebrow">第四章</p>
+  <h2 class="st">命令目录：13 个分类 · 200+ 条模板 · Capability 适配</h2>
+  <p class="sec-desc">每条命令模板包含类型（查看/写操作）、风险等级（低/中/高）、支持度（支持/受限）、前置条件、降级方案和参数表单。支持搜索、收藏和最近使用排序。</p>
+
+  <h3>命令分类</h3>
+  <div style="margin-bottom:1.5rem">
+    <span class="cat-tag">01 · 常用 adb</span>
+    <span class="cat-tag">02 · 其他 adb</span>
+    <span class="cat-tag">03 · am (Activity Manager)</span>
+    <span class="cat-tag">04 · pm (Package Manager)</span>
+    <span class="cat-tag">05 · ime (输入法)</span>
+    <span class="cat-tag">06 · content (内容提供者)</span>
+    <span class="cat-tag">07 · wm (Window Manager)</span>
+    <span class="cat-tag">08 · dumpsys (系统诊断)</span>
+    <span class="cat-tag">09 · shell 通用 (getprop/settings)</span>
+    <span class="cat-tag">10 · input (输入事件)</span>
+    <span class="cat-tag">11 · svc (系统服务控制)</span>
+    <span class="cat-tag">12 · logcat (日志捕获)</span>
+    <span class="cat-tag">13 · 文件/网络/fastboot</span>
+  </div>
+
+  <h3>命令模板元数据</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>元数据字段</th><th>说明</th><th>示例</th></tr></thead>
+    <tbody>
+      <tr><td><strong>category</strong></td><td>所属分类</td><td>am (Activity Manager)</td></tr>
+      <tr><td><strong>commandType</strong></td><td>命令类型</td><td>查看型 / 写操作</td></tr>
+      <tr><td><strong>riskLevel</strong></td><td>风险等级</td><td>低 / 中 / 高</td></tr>
+      <tr><td><strong>supportLevel</strong></td><td>支持度</td><td>支持 / 受限 / 不支持</td></tr>
+      <tr><td><strong>preconditions</strong></td><td>前置条件</td><td>Android 8+ / root 权限</td></tr>
+      <tr><td><strong>fallbacks</strong></td><td>降级方案</td><td>cmd 替代 am / dumpsys 替代 service call</td></tr>
+      <tr><td><strong>params</strong></td><td>参数表单</td><td>结构化参数定义（类型、默认值、枚举）</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>执行流程</h3>
+  <div class="flow-row">
+    <div class="flow-step" style="border-top:3px solid var(--b)">
+      <div class="num">①</div>
+      <div class="title">选择设备</div>
+      <div class="desc">设备列表 + Capability 摘要</div>
+    </div>
+    <div class="flow-step" style="border-top:3px solid var(--g)">
+      <div class="num">②</div>
+      <div class="title">浏览目录</div>
+      <div class="desc">分类 / 搜索 / 收藏定位命令</div>
+    </div>
+    <div class="flow-step" style="border-top:3px solid var(--p)">
+      <div class="num">③</div>
+      <div class="title">填充参数</div>
+      <div class="desc">结构化表单 + 自动组合命令</div>
+    </div>
+    <div class="flow-step" style="border-top:3px solid var(--o)">
+      <div class="num">④</div>
+      <div class="title">Capability 预检</div>
+      <div class="desc">探测设备支持度 + 降级建议</div>
+    </div>
+    <div class="flow-step" style="border-top:3px solid var(--r)">
+      <div class="num">⑤</div>
+      <div class="title">执行 + 结果</div>
+      <div class="desc">结构化渲染 / 原始文本双视图</div>
+    </div>
+  </div>
+
+  <div class="callout cw"><strong>原始命令模式兜底</strong>：对于尚未模板化的 adb 命令，系统提供原始命令模式，允许用户直接输入任意 adb 命令，在设备选择、能力预检、参数提示和风险提示后执行。结果同样享有结构化解析和原始文本双视图。</div>
+</section>
+
+<!-- ============ 结果渲染 ============ -->
+<section id="rendering">
+  <p class="eyebrow">第五章</p>
+  <h2 class="st">结果渲染：智能解析 · 双视图 · 差异对比</h2>
+  <p class="sec-desc">按命令类型智能解析输出，结构化预览 + 原始文本双视图自由切换，支持关键词搜索高亮、差异对比和多种格式导出。</p>
+
+  <h3>按命令类型的智能渲染</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>命令类型</th><th>渲染方式</th><th>特点</th></tr></thead>
+    <tbody>
+      <tr><td><strong>设备列表</strong></td><td>卡片式设备信息，序列号/状态/版本/传输方式</td><td>可视化设备状态图标</td></tr>
+      <tr><td><strong>连接状态</strong></td><td>连接状态摘要 + adb server 诊断</td><td>一键重启 adb server</td></tr>
+      <tr><td><strong>版本信息</strong></td><td>品牌/型号/SDK/Build/Fingerprint 结构化展示</td><td>字段对齐排版</td></tr>
+      <tr><td><strong>包管理 (pm)</strong></td><td>应用列表表格（包名/版本/路径/UID），支持筛选排序</td><td>可操作行（卸载/清除数据/拉取 APK）</td></tr>
+      <tr><td><strong>Activity 管理 (am)</strong></td><td>任务栈 / Activity 树 / Intent 解析结构化视图</td><td>层级缩进展示</td></tr>
+      <tr><td><strong>窗口管理 (wm)</strong></td><td>Display / Window / Layer 层级展示</td><td>尺寸信息高亮</td></tr>
+      <tr><td><strong>dumpsys 输出</strong></td><td>分段解析 + 字段对齐 + 关键字高亮</td><td>折叠长段落</td></tr>
+      <tr><td><strong>shell 属性</strong></td><td>Key-Value 表格，getprop / settings 分类展示</td><td>按前缀分组</td></tr>
+      <tr><td><strong>logcat 输出</strong></td><td>实时流式表格（时间/level/tag/pid/message）</td><td>多维度筛选 + 颜色标记</td></tr>
+      <tr><td><strong>文件传输</strong></td><td>传输进度 + 结果状态（成功/失败/文件大小）</td><td>进度条展示</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>结果分析能力</h3>
+  <div class="g3">
+    <div class="gc" style="border-top:4px solid var(--b)">
+      <p class="gc-label">能力 01</p>
+      <p class="gc-title">关键词搜索 + 高亮</p>
+      <p class="gc-body">全文本关键词搜索，匹配项高亮显示，支持正则表达式。在大体量 dumpsys / logcat 输出中快速定位关键信息。</p>
+    </div>
+    <div class="gc" style="border-top:4px solid var(--g)">
+      <p class="gc-label">能力 02</p>
+      <p class="gc-title">历史差异对比</p>
+      <p class="gc-body">选择任意两条历史记录进行逐行 diff，支持 token 级差异高亮。对比不同设备或不同时点的命令输出差异。</p>
+    </div>
+    <div class="gc" style="border-top:4px solid var(--p)">
+      <p class="gc-label">能力 03</p>
+      <p class="gc-title">多格式导出</p>
+      <p class="gc-body">支持导出为 Markdown（结构化文档）、TXT（纯文本）、JSON（结构化数据）三种格式，便于缺陷单、测试报告和研发分析复用。</p>
+    </div>
+  </div>
+
+  <div class="callout cg"><strong>结果双视图硬规则</strong>：文本型命令必须同时保留原始输出与结构化视图，解析失败时禁止丢失原文。用户可在两种视图之间一键切换，确保任何时候都不会因解析失败而无法查看结果。</div>
+</section>
+
+<!-- ============ 项目结构 ============ -->
+<section id="structure">
+  <p class="eyebrow">第六章</p>
+  <h2 class="st">项目结构：前端 + 后端 + 文档三层布局</h2>
+
+  <div class="tree"><span class="h">adbHelper/</span>
+├── <span class="h">src/</span>                              <span class="c"># TypeScript 源码（~6000+ 行）</span>
+│   ├── <span class="h">electron/</span>
+│   │   ├── <span class="k">main.ts</span>                   <span class="c"># Electron 主进程：窗口/IPC/协议/流管理</span>
+│   │   └── <span class="k">preload.ts</span>                <span class="c"># 安全 IPC 桥梁：白名单 API 暴露</span>
+│   ├── <span class="h">renderer/</span>
+│   │   ├── <span class="k">App.tsx</span>                   <span class="c"># React 主组件：状态/路由/页面编排</span>
+│   │   ├── <span class="h">lib/</span>
+│   │   │   ├── <span class="k">catalog.ts</span>              <span class="c"># 全量 ADB 命令目录（3153 行）</span>
+│   │   │   ├── <span class="k">outputRenderers.tsx</span>     <span class="c"># 结果结构化渲染器（1528 行）</span>
+│   │   │   └── <span class="k">fallbackApi.ts</span>           <span class="c"># IPC 降级 API</span>
+│   │   └── <span class="h">pages/</span>
+│   │       ├── CommandPage.tsx / InfoPage.tsx
+│   │       ├── BackupPage.tsx / DumpsysPage.tsx
+│   │       ├── LogcatPage.tsx / MonkeyPage.tsx
+│   │       ├── PerformancePage.tsx / LayoutPage.tsx
+│   │       └── KeySimPage.tsx
+│   └── <span class="h">shared/</span>
+│       ├── <span class="k">logcatRuntime.ts</span>          <span class="c"># Logcat 实时流处理（686 行）</span>
+│       └── <span class="k">execFileDecoded.ts</span>        <span class="c"># 子进程编码自动检测</span>
+│
+├── <span class="h">backend/</span>                          <span class="c"># Python 后端（~2300+ 行）</span>
+│   ├── <span class="k">cli.py</span>                      <span class="c"># CLI 主入口：25+ 子命令</span>
+│   └── <span class="h">state/</span>                        <span class="c"># 状态/配置持久化（JSON 文件）</span>
+│
+├── <span class="h">public/</span>                           <span class="c"># 静态资源</span>
+│   └── <span class="h">winscope/</span>                     <span class="c"># Winscope UI 层级分析工具嵌入</span>
+│
+└── <span class="h">docs/</span>                             <span class="c"># 设计文档</span>
+    ├── <span class="k">spec.md</span>                     <span class="c"># 需求规格说明书（15 条 FR + 5 条扩展）</span>
+    ├── <span class="k">plan.md</span>                     <span class="c"># 技术计划（架构/模块/契约/里程碑）</span>
+    ├── <span class="k">principles.md</span>               <span class="c"># 项目原则</span>
+    ├── <span class="h">decisions/</span>                   <span class="c"># 架构决策记录（ADR）</span>
+    └── <span class="h">contracts/</span>                   <span class="c"># 接口契约（IPC + CLI）</span></div>
+
+  <h3>核心模块依赖关系</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>模块</th><th>职责</th><th>对外接口</th><th>依赖</th></tr></thead>
+    <tbody>
+      <tr><td><strong>electron-main</strong></td><td>窗口、菜单、生命周期、IPC 路由、文件/系统集成</td><td>window.api.* 暴露、后端进程调度</td><td>preload、python-backend</td></tr>
+      <tr><td><strong>preload-bridge</strong></td><td>建立安全 IPC 白名单，将有限能力暴露给 renderer</td><td>device.list()、command.run()、result.export()</td><td>electron-main</td></tr>
+      <tr><td><strong>renderer-shell</strong></td><td>工作台 UI、导航、设备页、结果页、原型承接</td><td>React 路由、状态管理、组件树</td><td>preload-bridge</td></tr>
+      <tr><td><strong>command-catalog</strong></td><td>全量 adb 命令目录、分类、搜索、收藏、模板管理</td><td>searchCommands()、getCommandMeta()</td><td>capability-engine</td></tr>
+      <tr><td><strong>capability-engine</strong></td><td>设备探测、命令支持度评估、替代链路选择</td><td>probeDevice()、resolveCommand()</td><td>adb-runner、catalog</td></tr>
+      <tr><td><strong>adb-runner</strong></td><td>统一封装 adb/fastboot 子进程调用、超时、stderr 处理</td><td>run_adb()、run_shell()</td><td>Python runtime</td></tr>
+      <tr><td><strong>parser-engine</strong></td><td>dumpsys/am/cmd/logcat 等文本的语义分段与结构化解析</td><td>parse_result()、fallback_raw()</td><td>capability-engine</td></tr>
+      <tr><td><strong>persistence-store</strong></td><td>历史、快照、收藏、设置、本地缓存</td><td>repository API</td><td>SQLite</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ 设计约束 ============ -->
+<section id="constraints">
+  <p class="eyebrow">第七章</p>
+  <h2 class="st">设计约束与质量目标</h2>
+
+  <h3>非功能需求</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>维度</th><th>要求</th><th>量化指标</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag tag-b">性能</span></td><td>常规命令触发和结果展示保持流畅</td><td>单设备普通查询首次响应 &lt; 1.5s；10 万字符结果视图切换 &lt; 500ms；命令目录搜索响应 &lt; 200ms</td></tr>
+      <tr><td><span class="tag tag-g">兼容性</span></td><td>支持主流桌面系统和多 Android 版本设备</td><td>Ubuntu 22.04+ / Windows 10/11 / macOS 13+；Android 8-15 设备可接入</td></tr>
+      <tr><td><span class="tag tag-o">可靠性</span></td><td>adb 执行失败需可恢复、可追踪</td><td>命令失败后 100% 返回错误摘要与重试入口；最近 50 次历史可保留</td></tr>
+      <tr><td><span class="tag tag-r">安全</span></td><td>高风险命令要隔离和确认</td><td>默认禁止无确认执行写操作；无硬编码敏感信息；前后端三层隔离</td></tr>
+      <tr><td><span class="tag tag-p">可维护性</span></td><td>命令适配、解析器、界面分层清晰</td><td>capability 适配层、命令执行层、结果解析层、界面层职责分离</td></tr>
+      <tr><td><span class="tag tag-y">可观测性</span></td><td>关键操作具备日志与诊断信息</td><td>每次执行记录设备、模板、返回码、耗时、stderr 摘要</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>架构决策记录</h3>
+  <div class="g2">
+    <div class="gc" style="border-top:4px solid var(--b)">
+      <p class="gc-label">ADR-001</p>
+      <p class="gc-title">为何选择 Electron + React + Python</p>
+      <p class="gc-body">Electron 满足跨平台桌面分发和复杂文本展示需求；React 适合大型信息架构和组件化复用；Python 便于封装 adb 调用、适配规则和工具链。未选 Qt（原生成本高）、未选 Tauri（生态不如 Electron 成熟）。</p>
+    </div>
+    <div class="gc" style="border-top:4px solid var(--g)">
+      <p class="gc-label">设计原则</p>
+      <p class="gc-title">Capability 优先执行 + 全量可导航</p>
+      <p class="gc-body">所有 adb 操作先探测后执行；"全部 adb 命令"通过分类目录 + 搜索 + 收藏 + 原始命令模式组合承载，避免全量功能一次性显式铺开导致信息架构失控。</p>
+    </div>
+  </div>
+
+  <h3>风险缓解策略</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>风险</th><th>概率</th><th>影响</th><th>缓解策略</th></tr></thead>
+    <tbody>
+      <tr><td>全量 adb 命令范围过大导致信息架构失控</td><td><span class="tag tag-r">高</span></td><td><span class="tag tag-r">高</span></td><td>分类目录 + 搜索 + 收藏 + 原始命令兜底</td></tr>
+      <tr><td>不同 ROM/Android 版本命令差异大</td><td><span class="tag tag-r">高</span></td><td><span class="tag tag-r">高</span></td><td>Capability 探测、适配元数据和替代链路</td></tr>
+      <tr><td>dumpsys 等结果过大造成渲染卡顿</td><td><span class="tag tag-o">中</span></td><td><span class="tag tag-r">高</span></td><td>虚拟滚动、延迟解析、结果分段、原文兜底</td></tr>
+      <tr><td>Electron 与 Python 进程通信复杂</td><td><span class="tag tag-o">中</span></td><td><span class="tag tag-o">中</span></td><td>白名单 IPC + 明确 CLI 契约 + 契约测试</td></tr>
+      <tr><td>三平台打包差异影响交付</td><td><span class="tag tag-o">中</span></td><td><span class="tag tag-r">高</span></td><td>提前规划 Electron Builder 配置、平台能力矩阵</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+</main>
+</div>
+
+<script>
+const sections = document.querySelectorAll('main > section');
+const navLinks = document.querySelectorAll('nav a[data-target]');
+
+function showSection(id) {
+  sections.forEach(s => s.style.display = 'none');
+  const target = document.querySelector(id);
+  if (target) target.style.display = 'block';
+  navLinks.forEach(a => a.classList.toggle('active', a.dataset.target === id));
+}
+
+navLinks.forEach(a => {
+  a.addEventListener('click', () => showSection(a.dataset.target));
+});
+
+if (navLinks.length) navLinks[0].classList.add('active');
+</script>
+</body>
+</html>

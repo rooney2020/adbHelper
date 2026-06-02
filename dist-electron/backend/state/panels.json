@@ -1,0 +1,125 @@
+[
+  {
+    "id": "panel-1",
+    "name": "常用排障",
+    "description": "设备连接、状态确认与基础探测",
+    "commands": [
+      {
+        "id": "panel-command-e048be85-6621-486a-a513-1d5592c122b5",
+        "commandId": "devices",
+        "title": "adb devices",
+        "summary": "列出设备、传输方式和基础标识。",
+        "params": {
+          "flags": "-l"
+        },
+        "rawCommand": "adb devices -l"
+      },
+      {
+        "id": "panel-command-98912450-81f3-454e-b0d7-c7b4fb1f413a",
+        "commandId": "get-state",
+        "title": "adb get-state",
+        "summary": "快速检查当前设备是否在线。",
+        "params": {},
+        "rawCommand": "adb get-state"
+      },
+      {
+        "id": "panel-command-c74ce5e7-07a4-4a50-984f-3dee63829eca",
+        "commandId": "version",
+        "title": "adb version",
+        "summary": "查看当前 adb 客户端与服务端版本信息。",
+        "params": {},
+        "rawCommand": "adb version"
+      }
+    ]
+  },
+  {
+    "id": "panel-2",
+    "name": "安装部署",
+    "description": "安装、卸载与文件传输常用命令",
+    "commands": [
+      {
+        "id": "panel-command-8992c23e-520b-49f4-8340-e6dbb1fa467a",
+        "commandId": "install",
+        "title": "adb install",
+        "summary": "推送单个 APK 并安装到设备。",
+        "params": {
+          "installReplaceFlag": "",
+          "installTestFlag": "",
+          "installDowngradeFlag": "",
+          "installGrantFlag": "",
+          "userIdOpt": "",
+          "apkPath": "app-debug.apk",
+          "installFlags": ""
+        },
+        "rawCommand": "adb install app-debug.apk"
+      },
+      {
+        "id": "panel-command-7aa83938-69b9-4aeb-b4fd-2117680ef487",
+        "commandId": "uninstall",
+        "title": "adb uninstall",
+        "summary": "卸载指定应用，可选保留数据目录。",
+        "params": {
+          "keepDataFlag": "",
+          "userIdOpt": "",
+          "package": "com.demo.app"
+        },
+        "rawCommand": "adb uninstall com.demo.app"
+      },
+      {
+        "id": "panel-command-448a19a7-2c46-44b1-9917-4f85c94294df",
+        "commandId": "push",
+        "title": "adb push",
+        "summary": "把本地文件或目录推送到设备。",
+        "params": {
+          "localPath": "local.txt",
+          "remotePath": "/sdcard/local.txt",
+          "dryRunFlag": "",
+          "quietFlag": "",
+          "compressionAlgorithm": "",
+          "disableCompressionFlag": "",
+          "syncFlag": ""
+        },
+        "rawCommand": "adb push local.txt /sdcard/local.txt"
+      }
+    ]
+  },
+  {
+    "id": "panel-3",
+    "name": "系统诊断",
+    "description": "日志、Shell 与系统服务诊断",
+    "commands": [
+      {
+        "id": "panel-command-bf427a2a-b1ee-431e-b465-e174d38799bc",
+        "commandId": "logcat",
+        "title": "adb logcat",
+        "summary": "查看设备日志输出，可指定过滤表达式。",
+        "params": {
+          "logcatClearFlag": "",
+          "logcatFormat": "",
+          "logcatRegex": "",
+          "logcatFile": "",
+          "logcatFilter": "-d"
+        },
+        "rawCommand": "adb logcat -d"
+      },
+      {
+        "id": "panel-command-f91f1912-2a1d-430b-a790-77d3412a28c6",
+        "commandId": "shell",
+        "title": "adb shell",
+        "summary": "执行远端 shell 命令；无参数时进入交互 shell。",
+        "params": {
+          "shellCommand": "getprop ro.build.version.release"
+        },
+        "rawCommand": "adb shell getprop ro.build.version.release"
+      },
+      {
+        "id": "panel-command-6c858678-a36e-4dc7-ab44-67038fb53286",
+        "commandId": "dumpsys-list",
+        "title": "adb shell dumpsys -l",
+        "summary": "列出当前设备上全部可用的 dumpsys 服务名。",
+        "params": {},
+        "rawCommand": "adb shell dumpsys -l"
+      }
+    ]
+  }
+]

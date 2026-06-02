@@ -1,0 +1,45 @@
+[
+  {
+    "id": "panel-1",
+    "name": "常用排障",
+    "description": "设备连接、状态确认与基础探测",
+    "commands": [
+      {
+        "id": "panel-command-0de1f0e9-78c0-4db8-bf02-3d663cc02472",
+        "commandId": "devices",
+        "title": "adb devices",
+        "summary": "列出设备、传输方式和基础标识。",
+        "params": {
+          "flags": "-l"
+        },
+        "rawCommand": "adb devices -l"
+      },
+      {
+        "id": "panel-command-b64c44ec-fa5a-490b-a1e7-a750a2d42112",
+        "commandId": "get-state",
+        "title": "adb get-state",
+        "summary": "快速检查当前设备是否在线。",
+        "params": {},
+        "rawCommand": "adb get-state"
+      },
+      {
+        "id": "panel-command-e486dac0-625f-4cb2-9545-38e9277e57c6",
+        "commandId": "version",
+        "title": "adb version",
+        "summary": "查看当前 adb 客户端与服务端版本信息。",
+        "params": {},
+        "rawCommand": "adb shell pm clear --user 10 com.zone.service.carvoice"
+      },
+      {
+        "id": "panel-command-dd2c8b2c-d990-4494-94bc-a89cc0e80767",
+        "commandId": "shell-getprop",
+        "title": "adb shell getprop",
+        "summary": "读取系统属性。",
+        "params": {
+          "property": "ro.build.display.id"
+        },
+        "rawCommand": "adb shell getprop ro.build.display.id"
+      }
+    ]
+  }
+]

@@ -1,0 +1,30 @@
+contract: main-to-backend
+version: 1.0.0
+provider: python-backend
+consumer: electron-main
+commands:
+  - name: probe
+    input:
+      device: string
+    output:
+      type: DeviceCapabilityReport
+      description: 设备版本、属性、命令支持度和替代链路
+    errors: [ADB_NOT_FOUND, DEVICE_OFFLINE, SHELL_DENIED]
+  - name: run
+    input:
+      device: string
+      commandId: string
+      rawCommand: string?
+      args: string[]
+    output:
+      type: CommandExecutionResult
+      description: 命令执行状态、原始输出、结构化结果引用
+    errors: [UNSUPPORTED_COMMAND, EXEC_TIMEOUT, PARSE_FAILED]
+  - name: parse
+    input:
+      commandId: string
+      inputFile: string
+    output:
+      type: ParsedResult
+      description: 结构化解析数据
+    errors: [UNKNOWN_PARSER, INPUT_MISSING]

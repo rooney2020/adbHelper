@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ADB Helper 原型</title>
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body data-ui-state="normal">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-main">
+          <h1>跨版本 Android 调试工作台</h1>
+        </div>
+        <div class="device-anchor">
+          <div class="device-anchor-head">
+            <span class="badge info" id="currentDeviceBadge">当前设备：Pixel 8 Pro</span>
+            <button class="ghost-button" id="toggleDeviceTray">选择设备</button>
+          </div>
+
+          <div class="panel device-tray device-popup collapsed" id="deviceTray">
+            <div class="panel-head compact">
+              <div>
+                <p class="section-kicker">设备工作区</p>
+                <h3>切换目标设备</h3>
+              </div>
+            </div>
+            <div class="device-tray-body">
+              <label class="search-field">
+                <span>筛选设备</span>
+                <input type="search" placeholder="搜索序列号、品牌或 Android 版本" />
+              </label>
+              <div class="device-list" id="deviceList">
+                <button class="device-card active" data-device="Pixel 8 Pro · Android 15">
+                  <div>
+                    <strong>Pixel 8 Pro</strong>
+                    <p>serial · A15-PXL-001</p>
+                  </div>
+                  <span class="badge success">USB 在线</span>
+                </button>
+                <button class="device-card" data-device="Galaxy S24 · Android 14">
+                  <div>
+                    <strong>Galaxy S24</strong>
+                    <p>serial · A14-ONEUI-022</p>
+                  </div>
+                  <span class="badge warning">受限</span>
+                </button>
+                <button class="device-card" data-device="Redmi K70 · Android 14">
+                  <div>
+                    <strong>Redmi K70</strong>
+                    <p>serial · MIUI-HYPER-73</p>
+                  </div>
+                  <span class="badge info">Wi-Fi</span>
+                </button>
+              </div>
+
+              <div class="device-summary">
+                <h3>设备摘要</h3>
+                <ul>
+                  <li>系统：Android 15 / AOSP-like</li>
+                  <li>ADB：platform-tools 36.0.0</li>
+                  <li>差异：`am stack list` 不可用，建议改走 `cmd activity stacks`</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace-grid">
+        <section class="panel command-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">命令导航</p>
+              <h2>一级命令导航</h2>
+            </div>
+          </div>
+
+          <aside class="catalog-tree" id="catalogTree">
+            <div class="tree-group" data-group="core-adb">
+              <p class="card-kicker">连接与基础</p>
+              <button class="catalog-node active" data-category="core-adb">adb 核心命令</button>
+              <button class="catalog-node" data-category="shell-prop">shell / 属性</button>
+            </div>
+            <div class="tree-group" data-group="shell-am">
+              <p class="card-kicker">应用与 Activity</p>
+              <button class="catalog-node" data-category="shell-am">adb shell am</button>
+              <button class="catalog-node" data-category="shell-cmd-activity">adb shell cmd activity</button>
+              <button class="catalog-node" data-category="shell-pm">adb shell pm</button>
+            </div>
+            <div class="tree-group" data-group="shell-wm">
+              <p class="card-kicker">窗口与系统诊断</p>
+              <button class="catalog-node" data-category="shell-wm">adb shell wm</button>
+              <button class="catalog-node" data-category="shell-dumpsys">adb shell dumpsys</button>
+              <button class="catalog-node" data-category="shell-settings">adb shell settings</button>
+            </div>
+            <div class="tree-group" data-group="adb-logcat">
+              <p class="card-kicker">日志与自动化</p>
+              <button class="catalog-node" data-category="adb-logcat">adb logcat</button>
+              <button class="catalog-node" data-category="shell-input">adb shell input</button>
+            </div>
+          </aside>
+        </section>
+
+        <div class="resize-handle handle-left" id="leftResizeHandle" aria-label="调整一级命令导航宽度"></div>
+
+        <section class="panel subcommand-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">二级命令列表</p>
+              <h2>当前分类命令</h2>
+            </div>
+          </div>
+          <div class="toolbar-stack compact-stack">
+            <label class="search-field grow">
+              <span>搜索命令</span>
+              <input id="commandSearch" type="search" placeholder="例如：dumpsys、cmd activity、pm clear、input text" />
+            </label>
+            <div class="chip-row" id="commandFilters">
+              <button class="chip active" data-filter="all">全部</button>
+              <button class="chip" data-filter="view">查看型</button>
+              <button class="chip" data-filter="write">写操作</button>
+              <button class="chip" data-filter="risk">高风险</button>
+              <button class="chip" data-filter="favorite">已收藏</button>
+            </div>
+          </div>
+          <div class="subcommand-panel-list" id="subcommandPanelList"></div>
+        </section>
+
+        <div class="resize-handle handle-right" id="rightResizeHandle" aria-label="调整二级命令列表宽度"></div>
+
+        <section class="panel result-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">结果工作区</p>
+              <h2>结构化结果浏览器</h2>
+            </div>
+            <div class="button-row">
+              <button class="ghost-button" data-demo-action="已模拟导出 Markdown 报告">Markdown</button>
+              <button class="ghost-button" data-demo-action="已模拟导出结构化 JSON">JSON</button>
+              <button class="secondary-button" data-demo-action="已模拟导出纯文本结果">文本</button>
+            </div>
+          </div>
+
+          <div class="tab-row" id="resultTabs">
+            <button class="tab active" data-tab="structured">结构化</button>
+            <button class="tab" data-tab="raw">原文</button>
+            <button class="tab" data-tab="diff">差异</button>
+            <button class="tab" data-tab="history">历史</button>
+          </div>
+
+          <div class="result-body">
+            <section class="result-view active" data-view="structured">
+              <div class="result-toolbar">
+                <input type="search" placeholder="搜索 Task、Activity、窗口、进程关键字" />
+                <div class="chip-row">
+                  <button class="chip active">Task</button>
+                  <button class="chip">Activity</button>
+                  <button class="chip">Window</button>
+                  <button class="chip">Process</button>
+                </div>
+              </div>
+              <div class="tree-grid">
+                <article class="tree-column">
+                  <h3>任务栈</h3>
+                  <button class="tree-node active">Task #1482 · com.demo/.MainActivity</button>
+                  <button class="tree-node">Task #1471 · com.settings/.Settings</button>
+                  <button class="tree-node">Task #1463 · com.camera/.Launcher</button>
+                </article>
+                <article class="detail-card">
+                  <h3>Task #1482 明细</h3>
+                  <dl>
+                    <div><dt>前台窗口</dt><dd>Window{ADBHelper Main}</dd></div>
+                    <div><dt>栈层级</dt><dd>RootTask 1 / Display 0</dd></div>
+                    <div><dt>关联进程</dt><dd>pid 28461 / uid 10342</dd></div>
+                    <div><dt>风险提示</dt><dd>未发现冲突 Activity 栈</dd></div>
+                  </dl>
+                </article>
+              </div>
+            </section>
+
+            <section class="result-view" data-view="raw">
+              <div class="raw-pane">
+                <pre><code>ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+Display #0 (activities from top to bottom):
+  RootTask #1 type=standard mode=fullscreen visible=true
+    Task #1482 A=com.demo U=0 visible=true topActivity=MainActivity
+      Hist #0 ActivityRecord{123456 com.demo/.MainActivity}
+      state=RESUMED procState=TOP
+
+Fallback note: translated from cmd activity activities because am stack list is unsupported on this device.</code></pre>
+              </div>
+            </section>
+
+            <section class="result-view" data-view="diff">
+              <div class="diff-layout">
+                <article>
+                  <h3>当前设备</h3>
+                  <ul>
+                    <li>支持 `cmd activity activities`</li>
+                    <li>Window 名称携带 HyperOS 前缀</li>
+                    <li>最近任务栈深度 3</li>
+                  </ul>
+                </article>
+                <article>
+                  <h3>对比设备</h3>
+                  <ul>
+                    <li>支持 `am stack list`</li>
+                    <li>Window 名称为标准 AOSP 格式</li>
+                    <li>最近任务栈深度 2</li>
+                  </ul>
+                </article>
+              </div>
+            </section>
+
+            <section class="result-view" data-view="history">
+              <div class="history-list">
+                <article>
+                  <strong>14:22 · dumpsys activity top</strong>
+                  <p>成功 · 1.3 MB · 已生成结构化视图</p>
+                </article>
+                <article>
+                  <strong>14:11 · logcat -b main -v threadtime</strong>
+                  <p>成功 · 过滤规则：ActivityManager:I *:S</p>
+                </article>
+                <article>
+                  <strong>13:58 · pm clear com.demo.app</strong>
+                  <p>已取消 · 用户在风险弹窗中中止执行</p>
+                </article>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <div class="resize-handle-horizontal" id="bottomResizeHandle" aria-label="调整命令执行区高度"></div>
+
+        <section class="panel executor-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">命令执行区</p>
+              <h2>原始命令执行</h2>
+            </div>
+          </div>
+          <div class="catalog-workbench">
+            <div class="raw-command-box raw-command-box-minimal">
+              <textarea id="rawCommandInput" rows="7" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">adb devices -l</textarea>
+              <button class="primary-button execute-button" data-demo-action="已模拟执行当前命令，并把结果同步到结果工作区">执行并解析</button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <div class="modal-backdrop hidden" id="riskModal">
+      <div class="modal-card">
+        <p class="section-kicker">高风险操作确认</p>
+        <h2>确认清除应用数据？</h2>
+        <p>
+          当前设备：Pixel 8 Pro · 包名：com.demo.app。执行后会删除应用数据、账号缓存和本地数据库，且无法恢复。
+        </p>
+        <div class="modal-meta">
+          <div><span>命令</span><strong>adb shell pm clear com.demo.app</strong></div>
+          <div><span>风险等级</span><strong>高</strong></div>
+          <div><span>建议</span><strong>先导出快照再执行</strong></div>
+        </div>
+        <div class="button-row end">
+          <button class="ghost-button" id="closeRiskModal">取消</button>
+          <button class="danger-button">确认执行</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="capabilityModal">
+      <div class="modal-card">
+        <div class="panel-head compact">
+          <div>
+            <p class="section-kicker">适配洞察</p>
+            <h2>当前命令的 capability 结论</h2>
+          </div>
+          <button class="ghost-button" id="closeCapabilityModal">关闭</button>
+        </div>
+        <div class="insight-card success-soft">
+          <p>系统结论</p>
+          <strong>当前设备建议默认使用 `cmd activity` 家族</strong>
+          <span>原因：`am stack list` 在该设备返回 unknown command。</span>
+        </div>
+        <div class="insight-list">
+          <article>
+            <span>支持</span>
+            <strong>adb shell getprop</strong>
+          </article>
+          <article>
+            <span>受限</span>
+            <strong>cmd activity stacks</strong>
+          </article>
+          <article>
+            <span>不支持</span>
+            <strong>am stack list</strong>
+          </article>
+        </div>
+        <div class="snapshot-box">
+          <h3>最近快照</h3>
+          <p>2026-05-12 14:22 · dumpsys activity top · 1.3 MB</p>
+          <div class="button-row">
+            <button class="secondary-button" data-demo-action="已打开最近一次结果快照的离线视图">离线查看</button>
+            <button class="ghost-button" data-demo-action="已切换到对比模式，准备展示上一版差异">比对上一版</button>
+            <button class="ghost-button" data-demo-action="已模拟导出 capability 报告为 JSON 文件">导出 JSON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

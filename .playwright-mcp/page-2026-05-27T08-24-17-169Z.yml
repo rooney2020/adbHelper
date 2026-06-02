@@ -1,0 +1,168 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "按键模拟" [ref=e10] [cursor=pointer]
+        - button "布局查看器" [ref=e11] [cursor=pointer]
+        - button "Monkey" [active] [ref=e12] [cursor=pointer]
+        - button "性能测试" [ref=e13] [cursor=pointer]
+        - button "Dumpsys" [ref=e14] [cursor=pointer]
+        - button "设备信息" [ref=e15] [cursor=pointer]
+        - button "备份与恢复" [ref=e16] [cursor=pointer]
+    - generic [ref=e17]:
+      - button "当前设备：is4pr" [ref=e33] [cursor=pointer]:
+        - generic [ref=e21]: 当前设备：is4pr
+      - button "操作" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 操作
+      - button "打开设置中心" [ref=e28] [cursor=pointer]
+  - main [ref=e497]:
+    - generic [ref=e498]:
+      - generic [ref=e499]:
+        - generic [ref=e500]:
+          - button "▶ 开始测试" [ref=e501] [cursor=pointer]
+          - button "⬛ 紧急停止" [disabled] [ref=e502]
+        - generic [ref=e503]:
+          - generic [ref=e504]:
+            - text: "崩溃:"
+            - strong [ref=e505]: "0"
+          - generic [ref=e506]:
+            - text: "ANR:"
+            - strong [ref=e507]: "0"
+          - generic [ref=e508]:
+            - text: "异常:"
+            - strong [ref=e509]: "0"
+      - generic [ref=e510]:
+        - complementary [ref=e511]:
+          - heading "参数配置" [level=3] [ref=e512]
+          - generic [ref=e513]:
+            - generic [ref=e514]: 事件总数
+            - generic [ref=e515]: Monkey 将执行的随机事件总数
+            - spinbutton [ref=e516]: "10000"
+          - generic [ref=e517]:
+            - generic [ref=e518]: 事件间隔 (ms)
+            - generic [ref=e519]: 每个事件之间的等待时间，越大越慢
+            - generic [ref=e520]:
+              - slider [ref=e521]: "300"
+              - generic [ref=e522]: "300"
+          - heading "事件比例分配" [level=4] [ref=e523]
+          - generic [ref=e524]: 各类事件占比，总和建议不超过 100%
+          - generic [ref=e525]:
+            - generic "点击/长按等触摸事件" [ref=e526]: 触摸 (Touch)
+            - generic [ref=e527]:
+              - slider [ref=e528]: "0"
+              - generic [ref=e529]: 0%
+          - generic [ref=e530]:
+            - generic "滑动/拖拽等手势事件" [ref=e531]: 动作 (Motion)
+            - generic [ref=e532]:
+              - slider [ref=e533]: "0"
+              - generic [ref=e534]: 0%
+          - generic [ref=e535]:
+            - generic "模拟轨迹球移动" [ref=e536]: 轨迹球
+            - generic [ref=e537]:
+              - slider [ref=e538]: "0"
+              - generic [ref=e539]: 0%
+          - generic [ref=e540]:
+            - generic "方向键导航事件" [ref=e541]: 导航
+            - generic [ref=e542]:
+              - slider [ref=e543]: "0"
+              - generic [ref=e544]: 0%
+          - generic [ref=e545]:
+            - generic "Home/Back/Menu 等主要导航" [ref=e546]: 主导航
+            - generic [ref=e547]:
+              - slider [ref=e548]: "0"
+              - generic [ref=e549]: 0%
+          - generic [ref=e550]:
+            - generic "音量、电源等系统键" [ref=e551]: 系统按键
+            - generic [ref=e552]:
+              - slider [ref=e553]: "0"
+              - generic [ref=e554]: 0%
+          - generic [ref=e555]:
+            - generic "Activity 切换事件" [ref=e556]: 应用切换
+            - generic [ref=e557]:
+              - slider [ref=e558]: "0"
+              - generic [ref=e559]: 0%
+          - generic [ref=e560]:
+            - generic "键盘翻转事件" [ref=e561]: 翻转
+            - generic [ref=e562]:
+              - slider [ref=e563]: "0"
+              - generic [ref=e564]: 0%
+          - generic [ref=e565]:
+            - generic "未分类的其他事件" [ref=e566]: 其他事件
+            - generic [ref=e567]:
+              - slider [ref=e568]: "0"
+              - generic [ref=e569]: 0%
+          - heading "高级选项" [level=4] [ref=e570]
+          - generic [ref=e571]:
+            - generic [ref=e572]: 随机种子
+            - generic [ref=e573]: 固定种子可复现同一事件序列
+            - textbox "留空随机" [ref=e574]
+          - generic [ref=e575]:
+            - generic [ref=e576]: 详细级别
+            - generic [ref=e577]: 输出详细程度，级别越高日志越多
+            - combobox [ref=e578]:
+              - option "级别 0"
+              - option "级别 1 (-v)" [selected]
+              - option "级别 2 (-vv)"
+              - option "级别 3 (-vvv)"
+          - generic [ref=e579]:
+            - generic [ref=e580] [cursor=pointer]:
+              - checkbox "忽略崩溃继续 遇到 Crash 不停止" [checked] [ref=e581]
+              - text: 忽略崩溃继续
+              - generic [ref=e582]: 遇到 Crash 不停止
+            - generic [ref=e583] [cursor=pointer]:
+              - checkbox "忽略超时继续 遇到 ANR 不停止" [checked] [ref=e584]
+              - text: 忽略超时继续
+              - generic [ref=e585]: 遇到 ANR 不停止
+            - generic [ref=e586] [cursor=pointer]:
+              - checkbox "忽略安全异常 跳过权限错误" [checked] [ref=e587]
+              - text: 忽略安全异常
+              - generic [ref=e588]: 跳过权限错误
+            - generic [ref=e589] [cursor=pointer]:
+              - checkbox "忽略 Native 崩溃 遇到 Native Crash 不停止" [checked] [ref=e590]
+              - text: 忽略 Native 崩溃
+              - generic [ref=e591]: 遇到 Native Crash 不停止
+            - generic [ref=e592] [cursor=pointer]:
+              - checkbox "错误后终止进程 出错时 kill 目标进程" [checked] [ref=e593]
+              - text: 错误后终止进程
+              - generic [ref=e594]: 出错时 kill 目标进程
+            - generic [ref=e595] [cursor=pointer]:
+              - checkbox "监控 Native 崩溃" [checked] [ref=e596]
+              - text: 监控 Native 崩溃
+          - generic [ref=e597]:
+            - generic [ref=e598]: 多屏 Display ID
+            - generic [ref=e599]: 指定在哪个 display 上执行，留空为默认屏
+            - textbox "例如 4" [ref=e600]
+          - heading "测试应用范围" [level=4] [ref=e601]
+          - generic [ref=e602]:
+            - generic [ref=e603]: 包含应用
+            - generic [ref=e604]:
+              - textbox "输入包名并回车" [ref=e605]
+              - button "添加" [ref=e606] [cursor=pointer]
+              - button "选择" [ref=e607] [cursor=pointer]
+          - generic [ref=e608]:
+            - generic [ref=e609]: 排除应用
+            - generic [ref=e610]:
+              - textbox "输入包名并回车" [ref=e611]
+              - button "添加" [ref=e612] [cursor=pointer]
+              - button "选择" [ref=e613] [cursor=pointer]
+          - heading "命令预览" [level=4] [ref=e614]
+          - generic [ref=e615]: adb -s 3feae562 shell monkey --throttle 300 -v --ignore-crashes --ignore-timeouts --ignore-security-exceptions --ignore-native-crashes --kill-process-after-error --monitor-native-crashes 10000
+        - generic [ref=e616]:
+          - generic [ref=e617]:
+            - heading "实时日志" [level=3] [ref=e618]
+            - generic [ref=e619]:
+              - combobox [ref=e620]:
+                - option "全部级别" [selected]
+                - option "仅 CRASH"
+                - option "仅 ANR"
+                - option "仅异常"
+                - option "仅警告"
+                - option "仅信息"
+              - generic [ref=e621] [cursor=pointer]:
+                - checkbox "自动跟随" [checked] [ref=e622]
+                - text: 自动跟随
+              - button "清空日志" [ref=e623] [cursor=pointer]
+          - generic [ref=e625]: 尚无日志。点击「开始测试」启动 Monkey。

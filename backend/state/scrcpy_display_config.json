@@ -1,0 +1,34 @@
+{
+  "94266526": {
+    "0": {
+      "maxSize": 0,
+      "windowX": 0,
+      "windowY": 20,
+      "windowWidth": 1920,
+      "windowHeight": 362
+    },
+    "4": {
+      "maxSize": 0,
+      "windowX": 940,
+      "windowY": 470,
+      "windowWidth": 980,
+      "windowHeight": 554
+    }
+  },
+  "3feae562": {
+    "0": {
+      "maxSize": 0,
+      "windowX": 1920,
+      "windowY": 37,
+      "windowWidth": 984,
+      "windowHeight": 554
+    },
+    "2": {
+      "maxSize": 0,
+      "windowX": 989,
+      "windowY": 74,
+      "windowWidth": 931,
+      "windowHeight": 520
+    }
+  }
+}

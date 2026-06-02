@@ -1,0 +1,102 @@
+{
+  "version": "1.0",
+  "title": "ADB Helper 需求确认",
+  "submitLabel": "确认并继续",
+  "responseFormat": "json",
+  "sections": [
+    {
+      "id": "analysisSummary",
+      "title": "当前判断",
+      "fields": [
+        {
+          "type": "display",
+          "label": "已完成分析",
+          "content": [
+            "已生成 docs/spec.md、docs/checklists/requirements.md、docs/.ai-dev/state.json。",
+            "当前需求草案默认聚焦设备管理、capability 探测、命令模板库、查看型结果结构化展示和历史复用。"
+          ],
+          "items": [
+            "已识别 10 类歧义扫描维度，当前均为清晰或部分，暂无可直接进入实现的条件。",
+            "推荐首版先把查看型场景做完整，再决定是否纳入部分写操作。",
+            "建议为兼容性和展示体验做轻量竞品分析。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decisionQuestions",
+      "title": "待确认问题",
+      "fields": [
+        {
+          "type": "radio",
+          "id": "competitiveAnalysis",
+          "label": "是否在需求阶段执行轻量竞品分析？",
+          "required": true,
+          "allowCustom": true,
+          "customLabel": "补充说明",
+          "customPlaceholder": "如果你有想参考的工具或范围，请补充说明。",
+          "customRequiredMessage": "请选择一个选项，或补充你的真实想法。",
+          "options": [
+            {
+              "label": "执行轻量竞品分析",
+              "value": "执行轻量竞品分析",
+              "recommended": true,
+              "note": "推荐：可借鉴现有 adb GUI 工具在设备切换、结果展示和兼容提示上的成熟做法，成本较低。"
+            },
+            {
+              "label": "跳过竞品分析，直接继续",
+              "value": "跳过竞品分析",
+              "note": "适用于你已经非常明确目标形态，不需要额外参考。"
+            }
+          ]
+        },
+        {
+          "type": "radio",
+          "id": "prototypeNeed",
+          "label": "架构确认后，是否进入桌面应用原型设计阶段？",
+          "required": true,
+          "allowCustom": true,
+          "customLabel": "补充说明",
+          "customPlaceholder": "例如说明你希望原型覆盖的页面或直接跳过原因。",
+          "customRequiredMessage": "请选择一个选项，或补充你的真实想法。",
+          "options": [
+            {
+              "label": "需要原型设计",
+              "value": "需要原型设计",
+              "recommended": true,
+              "note": "推荐：这是桌面 UI 项目，原型能提前锁定设备列表、结果页和多视图切换布局，降低返工。"
+            },
+            {
+              "label": "跳过原型，直接开发",
+              "value": "跳过原型",
+              "note": "适用于你更关注功能验证，且愿意接受后续 UI 调整成本。"
+            }
+          ]
+        },
+        {
+          "type": "radio",
+          "id": "firstReleaseScope",
+          "label": "首版范围更偏向哪种方向？",
+          "required": true,
+          "allowCustom": true,
+          "customLabel": "补充说明",
+          "customPlaceholder": "例如指定你特别关注的命令类型或必须支持的操作。",
+          "customRequiredMessage": "请选择一个选项，或补充你的真实想法。",
+          "options": [
+            {
+              "label": "查看型命令优先，写操作后置",
+              "value": "查看型优先",
+              "recommended": true,
+              "note": "推荐：先把 capability 识别和结果展示做稳，更适合快速建立可靠的跨设备兼容基础。"
+            },
+            {
+              "label": "查看型与部分写操作一起纳入首版",
+              "value": "查看型加部分写操作",
+              "note": "适用于你明确需要安装 APK、启动 Activity、清日志等常用操作也一起落地。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

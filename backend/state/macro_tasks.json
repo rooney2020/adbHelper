@@ -1,0 +1,36 @@
+[
+  {
+    "id": "macro-task-1",
+    "name": "测试授权弹窗编排任务",
+    "steps": [
+      {
+        "id": "macro-1",
+        "type": "adb",
+        "name": "清空应用数据",
+        "value": "adb shell pm clear --user 10 com.zone.service.carvoice",
+        "delayMs": "300"
+      },
+      {
+        "id": "macro-1779443239184-sw2kq5",
+        "type": "adb",
+        "name": "启动车外喊话应用",
+        "value": "adb shell am start --user 10 -n com.zone.service.carvoice/com.zone.service.carvoice.MainActivity",
+        "delayMs": "1000"
+      },
+      {
+        "id": "macro-1779443277636-ba5kj0",
+        "type": "tap",
+        "name": "点击步骤",
+        "value": "204,426",
+        "delayMs": "1000"
+      },
+      {
+        "id": "macro-1779443294819-29lc07",
+        "type": "tap",
+        "name": "点击授权",
+        "value": "1022,856",
+        "delayMs": "2000"
+      }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "outputDir": "/home/tsdl/ssd/ingo/logcat",
+  "maxFileSizeMb": 10,
+  "clearBeforeStart": true,
+  "displayLineLimit": 3000,
+  "refreshIntervalMs": 300,
+  "defaultRegexEnabled": true,
+  "defaultLevels": [
+    "D",
+    "I",
+    "W",
+    "E",
+    "F"
+  ]
+}

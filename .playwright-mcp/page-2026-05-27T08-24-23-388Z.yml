@@ -1,0 +1,71 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "按键模拟" [ref=e10] [cursor=pointer]
+        - button "布局查看器" [ref=e11] [cursor=pointer]
+        - button "Monkey" [ref=e12] [cursor=pointer]
+        - button "性能测试" [ref=e13] [cursor=pointer]
+        - button "Dumpsys" [active] [ref=e14] [cursor=pointer]
+        - button "设备信息" [ref=e15] [cursor=pointer]
+        - button "备份与恢复" [ref=e16] [cursor=pointer]
+    - generic [ref=e17]:
+      - button "当前设备：is4pr" [ref=e33] [cursor=pointer]:
+        - generic [ref=e21]: 当前设备：is4pr
+      - button "操作" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 操作
+      - button "打开设置中心" [ref=e28] [cursor=pointer]
+  - main [ref=e626]:
+    - generic [ref=e628]:
+      - navigation [ref=e629]:
+        - button "性能监控" [ref=e630] [cursor=pointer]:
+          - strong [ref=e631]: 性能监控
+        - button "电池状态" [ref=e632] [cursor=pointer]:
+          - strong [ref=e633]: 电池状态
+        - button "启动性能" [ref=e634] [cursor=pointer]:
+          - strong [ref=e635]: 启动性能
+        - button "Activity" [ref=e636] [cursor=pointer]:
+          - strong [ref=e637]: Activity
+        - button "Window" [ref=e638] [cursor=pointer]:
+          - strong [ref=e639]: Window
+        - button "Display" [ref=e640] [cursor=pointer]:
+          - strong [ref=e641]: Display
+        - button "Input" [ref=e642] [cursor=pointer]:
+          - strong [ref=e643]: Input
+        - button "Power" [ref=e644] [cursor=pointer]:
+          - strong [ref=e645]: Power
+        - button "Meminfo" [ref=e646] [cursor=pointer]:
+          - strong [ref=e647]: Meminfo
+        - button "CPU Info" [ref=e648] [cursor=pointer]:
+          - strong [ref=e649]: CPU Info
+        - button "Package" [ref=e650] [cursor=pointer]:
+          - strong [ref=e651]: Package
+        - button "SurfaceFlinger" [ref=e652] [cursor=pointer]:
+          - strong [ref=e653]: SurfaceFlinger
+        - button "网络" [ref=e654] [cursor=pointer]:
+          - strong [ref=e655]: 网络
+        - button "WiFi" [ref=e656] [cursor=pointer]:
+          - strong [ref=e657]: WiFi
+        - button "蓝牙" [ref=e658] [cursor=pointer]:
+          - strong [ref=e659]: 蓝牙
+        - button "音频" [ref=e660] [cursor=pointer]:
+          - strong [ref=e661]: 音频
+        - button "USB" [ref=e662] [cursor=pointer]:
+          - strong [ref=e663]: USB
+        - button "通知" [ref=e664] [cursor=pointer]:
+          - strong [ref=e665]: 通知
+        - button "Alarm" [ref=e666] [cursor=pointer]:
+          - strong [ref=e667]: Alarm
+        - button "进程统计" [ref=e668] [cursor=pointer]:
+          - strong [ref=e669]: 进程统计
+      - generic [ref=e671]:
+        - generic [ref=e672]:
+          - button "可视化" [ref=e673] [cursor=pointer]
+          - button "原始数据" [ref=e674] [cursor=pointer]
+        - generic [ref=e675]:
+          - button "开始采样" [ref=e676] [cursor=pointer]
+          - generic [ref=e677]: 每 3 秒采样一次 CPU / 内存 / FPS
+        - generic [ref=e678]: 点击"开始采样"实时监控设备 CPU、内存、FPS。

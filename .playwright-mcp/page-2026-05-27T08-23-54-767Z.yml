@@ -1,0 +1,65 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: ADB HELPER
+      - generic [ref=e7]:
+        - button "命令" [ref=e8] [cursor=pointer]
+        - button "日志捕获" [ref=e9] [cursor=pointer]
+        - button "按键模拟" [ref=e10] [cursor=pointer]
+        - button "布局查看器" [ref=e11] [cursor=pointer]
+        - button "Monkey" [ref=e12] [cursor=pointer]
+        - button "性能测试" [ref=e13] [cursor=pointer]
+        - button "Dumpsys" [ref=e14] [cursor=pointer]
+        - button "设备信息" [active] [ref=e15] [cursor=pointer]
+        - button "备份与恢复" [ref=e16] [cursor=pointer]
+    - generic [ref=e17]:
+      - button "当前设备：is4pr" [ref=e33] [cursor=pointer]:
+        - generic [ref=e21]: 当前设备：is4pr
+      - button "操作" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 操作
+      - button "打开设置中心" [ref=e28] [cursor=pointer]
+  - main [ref=e331]:
+    - generic [ref=e333]:
+      - complementary [ref=e334]:
+        - button "基础信息" [ref=e335] [cursor=pointer]:
+          - strong [ref=e336]: 基础信息
+        - button "文件系统" [ref=e337] [cursor=pointer]:
+          - strong [ref=e338]: 文件系统
+        - button "应用列表" [ref=e339] [cursor=pointer]:
+          - strong [ref=e340]: 应用列表
+        - button "用户信息" [ref=e341] [cursor=pointer]:
+          - strong [ref=e342]: 用户信息
+        - button "进程信息" [ref=e343] [cursor=pointer]:
+          - strong [ref=e344]: 进程信息
+        - button "截屏录屏" [ref=e345] [cursor=pointer]:
+          - strong [ref=e346]: 截屏录屏
+      - generic [ref=e347]:
+        - paragraph [ref=e348]: 基础信息
+        - generic [ref=e349]:
+          - generic [ref=e350]:
+            - generic [ref=e351]: 当前设备
+            - strong [ref=e352]: is4pr
+          - generic [ref=e353]:
+            - generic [ref=e354]: 设备序列号
+            - strong [ref=e355]: 3feae562
+          - generic [ref=e356]:
+            - generic [ref=e357]: 连接状态
+            - strong [ref=e358]: device
+          - generic [ref=e359]:
+            - generic [ref=e360]: Android 版本
+            - strong [ref=e361]: 未知
+          - generic [ref=e362]:
+            - generic [ref=e363]: 厂商
+            - strong [ref=e364]: 未知
+          - generic [ref=e365]:
+            - generic [ref=e366]: 设备型号
+            - strong [ref=e367]: is4pr
+          - generic [ref=e368]:
+            - generic [ref=e369]: SDK 级别
+            - strong [ref=e370]: 未知
+          - generic [ref=e371]:
+            - generic [ref=e372]: 版本号
+            - strong [ref=e373]: IS4PRQDVB140621
+          - generic [ref=e374]:
+            - generic [ref=e375]: model
+            - strong [ref=e376]: is4pr

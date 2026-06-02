@@ -1,0 +1,41 @@
+contract: data-schemas
+version: 1.0.0
+entities:
+  DeviceSummary:
+    fields:
+      serial: string
+      model: string
+      brand: string
+      androidVersion: string
+      transport: usb|wifi
+      state: online|offline|unauthorized
+  CommandMeta:
+    fields:
+      id: string
+      category: string
+      syntax: string
+      riskLevel: low|medium|high
+      fallbackIds: string[]
+      minAndroidVersion: string?
+      notes: string[]
+  CommandExecutionResult:
+    fields:
+      recordId: string
+      status: success|failed|partial
+      exitCode: number
+      stdout: string
+      stderrSummary: string
+      structuredResultFile: string?
+      durationMs: number
+  DeviceCapabilityReport:
+    fields:
+      deviceSerial: string
+      checkedAt: string
+      commandSupport:
+        type: CapabilityEntry[]
+  CapabilityEntry:
+    fields:
+      commandId: string
+      supportLevel: supported|limited|unsupported
+      reason: string
+      fallbackIds: string[]

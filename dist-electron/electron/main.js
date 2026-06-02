@@ -536,6 +536,97 @@ function registerIpcHandlers() {
             return { status: "error", content: "", message: err instanceof Error ? err.message : String(err) };
         }
     });
+    // Bugreport - capture bugreport from device
+    ipcMain.handle("bugreport.fetch", async (_event, payload) => {
+        try {
+            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const outputDir = join(homeDir, "Documents", "adb-helper-bugreport");
+            await mkdir(outputDir, { recursive: true });
+            const timestamp = Date.now();
+            const fileName = `bugreport-${payload.deviceId}-${timestamp}.zip`;
+            const remotePath = `/data/local/tmp/${fileName}`;
+            // Run bugreport on device
+            const runResult = await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `bugreport ${remotePath}`
+            ]);
+            if (runResult.status !== "ok") {
+                return { status: "error", message: `生成 bugreport 失败: ${runResult.message ?? "未知错误"}` };
+            }
+            // Pull bugreport from device
+            const pullResult = await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `pull ${remotePath} ${join(outputDir, fileName)}`
+            ]);
+            if (pullResult.status !== "ok") {
+                return { status: "error", message: `拉取 bugreport 失败: ${pullResult.message ?? "未知错误"}` };
+            }
+            // Clean up remote file
+            await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `shell rm -f ${remotePath}`
+            ]);
+            return { status: "ok", file: join(outputDir, fileName) };
+        }
+        catch (err) {
+            return { status: "error", message: err instanceof Error ? err.message : String(err) };
+        }
+    });
+    // Trace - start atrace capture on device
+    ipcMain.handle("trace.start", async (_event, payload) => {
+        try {
+            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const outputDir = join(homeDir, "Documents", "adb-helper-trace");
+            await mkdir(outputDir, { recursive: true });
+            const timestamp = Date.now();
+            const duration = Math.min(Math.max(Number(payload.duration) || 5, 1), 30);
+            const categories = (payload.categories ?? []).join(",") || "gfx,view,wm,am,sched";
+            const fileName = `trace-${payload.deviceId}-${timestamp}.perfetto-trace`;
+            const remotePath = `/data/local/tmp/${fileName}`;
+            // Run atrace on device
+            const runResult = await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `shell atrace --async_stop -t ${duration} -b 40960 ${categories} -o ${remotePath}`
+            ]);
+            if (runResult.status !== "ok") {
+                return { status: "error", message: `执行 atrace 失败: ${runResult.message ?? "未知错误"}` };
+            }
+            // Pull trace from device
+            const pullResult = await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `pull ${remotePath} ${join(outputDir, fileName)}`
+            ]);
+            if (pullResult.status !== "ok") {
+                return { status: "error", message: `拉取 trace 文件失败: ${pullResult.message ?? "未知错误"}` };
+            }
+            // Clean up remote file
+            await invokeBackend([
+                "run",
+                "--device", payload.deviceId,
+                "--raw", `shell rm -f ${remotePath}`
+            ]);
+            return { status: "ok", file: join(outputDir, fileName) };
+        }
+        catch (err) {
+            return { status: "error", message: err instanceof Error ? err.message : String(err) };
+        }
+    });
+    // Trace - read local file content as buffer for perfetto
+    ipcMain.handle("trace.readFile", async (_event, payload) => {
+        try {
+            const filePath = resolveWorkingPath(payload.path);
+            const buffer = await readFile(filePath);
+            return { status: "ok", data: buffer.toString("base64") };
+        }
+        catch (err) {
+            return { status: "error", message: err instanceof Error ? err.message : String(err) };
+        }
+    });
 }
 function createWindow() {
     const window = new BrowserWindow({

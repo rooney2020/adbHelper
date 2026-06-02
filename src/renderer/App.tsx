@@ -5786,7 +5786,19 @@ export default function App() {
     }
     setKeySimScreenshotLoading(true);
     setKeySimNotice(null);
-    const response = await fetchDevApi<{ status?: string; dataUrl?: string; message?: string }>(`/api/adb-helper/keysim-screenshot?deviceId=${encodeURIComponent(currentDeviceId)}`);
+    let response: { status?: string; dataUrl?: string; message?: string } | null = null;
+    if (!isBrowserPreviewMode) {
+      try {
+        const result = await runtimeApi.screen.capture({ deviceId: currentDeviceId });
+        response = { status: result.status, dataUrl: result.dataUrl, message: result.message };
+      } catch {
+        // IPC failed, fall through to try dev API
+      }
+    }
+    if (!response || response.status !== "ok" || !response.dataUrl) {
+      const fallback = await fetchDevApi<{ status?: string; dataUrl?: string; message?: string }>(`/api/adb-helper/keysim-screenshot?deviceId=${encodeURIComponent(currentDeviceId)}`);
+      response = fallback;
+    }
     if (!response || response.status !== "ok" || !response.dataUrl) {
       setKeySimNotice(response?.message ?? "获取截图失败");
       setKeySimScreenshotLoading(false);
@@ -5797,16 +5809,33 @@ export default function App() {
     setKeySimSwipeStart(null);
     setKeySimSwipeEnd(null);
 
-    // Try to align coordinates with input tap/swipe logical space.
-    const sizeResp = await postDevApi<{ stdout?: string }>("/api/adb-helper/command-run", {
-      deviceId: currentDeviceId,
-      commandId: "keysim-wm-size",
-      commandTitle: "读取逻辑分辨率",
-      rawCommand: "adb shell wm size",
-      args: [],
-      source: "user",
-    });
-    const sizeText = typeof sizeResp?.stdout === "string" ? sizeResp.stdout : "";
+    let sizeText = "";
+    if (!isBrowserPreviewMode) {
+      try {
+        const sizeResp = await runtimeApi.command.run({
+          deviceId: currentDeviceId,
+          commandId: "keysim-wm-size",
+          commandTitle: "读取逻辑分辨率",
+          rawCommand: `adb -s ${currentDeviceId} shell wm size`,
+          args: [],
+          source: "user",
+        });
+        sizeText = (sizeResp as any)?.stdout ?? (sizeResp as any)?.output ?? "";
+      } catch {
+        // ignore
+      }
+    }
+    if (!sizeText) {
+      const sizeResp = await postDevApi<{ stdout?: string }>("/api/adb-helper/command-run", {
+        deviceId: currentDeviceId,
+        commandId: "keysim-wm-size",
+        commandTitle: "读取逻辑分辨率",
+        rawCommand: "adb shell wm size",
+        args: [],
+        source: "user",
+      });
+      sizeText = typeof sizeResp?.stdout === "string" ? sizeResp.stdout : "";
+    }
     const match = sizeText.match(/(?:Override|Physical) size:\s*(\d+)x(\d+)/i);
     if (match) {
       setKeySimTouchSize({ width: Number(match[1]), height: Number(match[2]) });

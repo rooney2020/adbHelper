@@ -83,5 +83,12 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
     crash: {
         list: (payload) => ipcRenderer.invoke("crash.list", payload),
         read: (payload) => ipcRenderer.invoke("crash.read", payload)
+    },
+    bugreport: {
+        fetch: (payload) => ipcRenderer.invoke("bugreport.fetch", payload)
+    },
+    trace: {
+        start: (payload) => ipcRenderer.invoke("trace.start", payload),
+        readFile: (payload) => ipcRenderer.invoke("trace.readFile", payload)
     }
 });

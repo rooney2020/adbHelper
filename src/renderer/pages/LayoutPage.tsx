@@ -457,7 +457,7 @@ export default function LayoutPage({
                     </div>
                   ) : (
                     <iframe
-                      src={`/winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
+                      src={`${window.location.protocol === "file:" ? "winscope://" : "/"}winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
                       className="layout-viewer-winscope-iframe"
                       title="Winscope"
                       onLoad={(event) => {
@@ -524,7 +524,7 @@ export default function LayoutPage({
 
               {layoutViewerTab !== "winscope" && layoutWinscopeToken ? (
                 <iframe
-                  src={`/winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
+                  src={`${window.location.protocol === "file:" ? "winscope://" : "/"}winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
                   className="layout-viewer-winscope-iframe layout-viewer-winscope-hidden"
                   title="Winscope (background)"
                 />

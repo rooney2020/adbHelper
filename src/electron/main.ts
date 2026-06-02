@@ -610,9 +610,9 @@ function registerIpcHandlers() {
 
       // Run bugreport on device
       const runResult = await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `bugreport ${remotePath}`
+        "--raw", `bugreport ${remotePath}`
       ]);
 
       if (runResult.status !== "ok") {
@@ -621,9 +621,9 @@ function registerIpcHandlers() {
 
       // Pull bugreport from device
       const pullResult = await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `pull ${remotePath} ${join(outputDir, fileName)}`
+        "--raw", `pull ${remotePath} ${join(outputDir, fileName)}`
       ]);
 
       if (pullResult.status !== "ok") {
@@ -632,9 +632,9 @@ function registerIpcHandlers() {
 
       // Clean up remote file
       await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `shell rm -f ${remotePath}`
+        "--raw", `shell rm -f ${remotePath}`
       ]);
 
       return { status: "ok", file: join(outputDir, fileName) };
@@ -657,9 +657,9 @@ function registerIpcHandlers() {
 
       // Run atrace on device
       const runResult = await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `shell atrace --async_stop -t ${duration} -b 40960 ${categories} -o ${remotePath}`
+        "--raw", `shell atrace --async_stop -t ${duration} -b 40960 ${categories} -o ${remotePath}`
       ]);
 
       if (runResult.status !== "ok") {
@@ -668,9 +668,9 @@ function registerIpcHandlers() {
 
       // Pull trace from device
       const pullResult = await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `pull ${remotePath} ${join(outputDir, fileName)}`
+        "--raw", `pull ${remotePath} ${join(outputDir, fileName)}`
       ]);
 
       if (pullResult.status !== "ok") {
@@ -679,9 +679,9 @@ function registerIpcHandlers() {
 
       // Clean up remote file
       await invokeBackend([
-        "command-run",
+        "run",
         "--device", payload.deviceId,
-        "--raw-command", `shell rm -f ${remotePath}`
+        "--raw", `shell rm -f ${remotePath}`
       ]);
 
       return { status: "ok", file: join(outputDir, fileName) };

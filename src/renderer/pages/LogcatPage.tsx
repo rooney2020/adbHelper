@@ -258,8 +258,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                     crash.setCrashLoading(true);
                     crash.setCrashContent(null);
                     try {
-                      const response = await fetch(`/api/adb-helper/crash-list?deviceId=${encodeURIComponent(shared.currentDeviceId)}`);
-                      const data = await response.json();
+                      const api = (window as any).adbHelperApi?.crash;
+                      if (!api) { alert("IPC 接口不可用"); crash.setCrashLoading(false); return; }
+                      const data = await api.list({ deviceId: shared.currentDeviceId });
                       if (data.status === "ok") crash.setCrashFiles({ tombstones: data.tombstones ?? [], anr: data.anr ?? [], dropbox: data.dropbox ?? [] });
                       else alert(`获取失败: ${data.message}`);
                     } catch (error: any) {
@@ -291,8 +292,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                             <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
                               crash.setCrashContentLoading(true);
                               try {
-                                const response = await fetch(`/api/adb-helper/crash-read?deviceId=${encodeURIComponent(shared.currentDeviceId)}&filePath=${encodeURIComponent(file.path)}`);
-                                const data = await response.json();
+                                const api = (window as any).adbHelperApi?.crash;
+                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
                                 if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
                                 else alert(`读取失败: ${data.message}`);
                               } catch (error: any) {
@@ -316,8 +318,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                             <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
                               crash.setCrashContentLoading(true);
                               try {
-                                const response = await fetch(`/api/adb-helper/crash-read?deviceId=${encodeURIComponent(shared.currentDeviceId)}&filePath=${encodeURIComponent(file.path)}`);
-                                const data = await response.json();
+                                const api = (window as any).adbHelperApi?.crash;
+                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
                                 if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
                                 else alert(`读取失败: ${data.message}`);
                               } catch (error: any) {
@@ -341,8 +344,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                             <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
                               crash.setCrashContentLoading(true);
                               try {
-                                const response = await fetch(`/api/adb-helper/crash-read?deviceId=${encodeURIComponent(shared.currentDeviceId)}&filePath=${encodeURIComponent(file.path)}`);
-                                const data = await response.json();
+                                const api = (window as any).adbHelperApi?.crash;
+                                if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
                                 if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
                                 else alert(`读取失败: ${data.message}`);
                               } catch (error: any) {

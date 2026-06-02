@@ -79,5 +79,9 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
         capture: (payload) => ipcRenderer.invoke("screen.capture", payload),
         startRecord: (payload) => ipcRenderer.invoke("screen.startRecord", payload),
         stopRecord: (payload) => ipcRenderer.invoke("screen.stopRecord", payload)
+    },
+    crash: {
+        list: (payload) => ipcRenderer.invoke("crash.list", payload),
+        read: (payload) => ipcRenderer.invoke("crash.read", payload)
     }
 });

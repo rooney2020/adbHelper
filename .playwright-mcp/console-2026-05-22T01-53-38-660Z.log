@@ -1,2 +1,0 @@
-[      24ms] The requested module '/src/renderer/App.tsx?t=1779414709242' does not provide an export named 'default'
-[   28226ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102

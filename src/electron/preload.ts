@@ -92,5 +92,9 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
     capture: (payload: { deviceId: string; displayId?: number; savePath?: string }) => ipcRenderer.invoke("screen.capture", payload),
     startRecord: (payload: { deviceId: string; displayId?: number }) => ipcRenderer.invoke("screen.startRecord", payload),
     stopRecord: (payload: { deviceId: string }) => ipcRenderer.invoke("screen.stopRecord", payload)
+  },
+  crash: {
+    list: (payload: { deviceId: string }) => ipcRenderer.invoke("crash.list", payload),
+    read: (payload: { deviceId: string; filePath: string }) => ipcRenderer.invoke("crash.read", payload)
   }
 });

@@ -1,6 +1,0 @@
-[      55ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102
-[  310128ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414530206:0
-[  310129ms] [ERROR] [vite] Failed to reload /src/renderer/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
-[  434189ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/renderer/App.tsx?t=1779414654340:0
-[  434196ms] [ERROR] [vite] Failed to reload /src/renderer/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:808
-[  474765ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102

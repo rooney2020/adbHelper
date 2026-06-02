@@ -516,6 +516,26 @@ function registerIpcHandlers() {
             return { status: "error", message: err instanceof Error ? err.message : String(err) };
         }
     });
+    // Crash/ANR - list files from device
+    ipcMain.handle("crash.list", async (_event, payload) => {
+        try {
+            const result = await invokeBackend(["crash-list", "--device", payload.deviceId]);
+            return result;
+        }
+        catch (err) {
+            return { status: "error", tombstones: [], anr: [], dropbox: [], message: err instanceof Error ? err.message : String(err) };
+        }
+    });
+    // Crash/ANR - read file content from device
+    ipcMain.handle("crash.read", async (_event, payload) => {
+        try {
+            const result = await invokeBackend(["crash-read", "--device", payload.deviceId, "--file-path", payload.filePath]);
+            return result;
+        }
+        catch (err) {
+            return { status: "error", content: "", message: err instanceof Error ? err.message : String(err) };
+        }
+    });
 }
 function createWindow() {
     const window = new BrowserWindow({

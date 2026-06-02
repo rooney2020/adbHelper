@@ -1,5 +1,0 @@
-[      25ms] The requested module '/src/renderer/App.tsx?t=1779411818248' does not provide an export named 'default'
-[   24415ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102
-[   25769ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=a4936e8a:20102
-[   98069ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/src/renderer/App.tsx?t=1779411930681:0
-[   98069ms] [ERROR] [vite] Failed to reload /src/renderer/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://127.0.0.1:5173/@vite/client:808

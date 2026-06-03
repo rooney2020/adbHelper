@@ -82,13 +82,28 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
     },
     crash: {
         list: (payload) => ipcRenderer.invoke("crash.list", payload),
-        read: (payload) => ipcRenderer.invoke("crash.read", payload)
+        read: (payload) => ipcRenderer.invoke("crash.read", payload),
+        export: (payload) => ipcRenderer.invoke("crash.export", payload)
     },
     bugreport: {
-        fetch: (payload) => ipcRenderer.invoke("bugreport.fetch", payload)
+        fetch: (payload) => ipcRenderer.invoke("bugreport.fetch", payload),
+        listFiles: () => ipcRenderer.invoke("bugreport.listFiles")
     },
     trace: {
         start: (payload) => ipcRenderer.invoke("trace.start", payload),
-        readFile: (payload) => ipcRenderer.invoke("trace.readFile", payload)
+        readFile: (payload) => ipcRenderer.invoke("trace.readFile", payload),
+        openInPerfetto: (payload) => ipcRenderer.invoke("trace.openInPerfetto", payload),
+        listFiles: () => ipcRenderer.invoke("trace.listFiles")
+    },
+    monkey: {
+        start: (payload) => ipcRenderer.invoke("monkey.start", payload),
+        stop: (payload) => ipcRenderer.invoke("monkey.stop", payload),
+        status: (payload) => ipcRenderer.invoke("monkey.status", payload)
+    },
+    localFile: {
+        read: (payload) => ipcRenderer.invoke("localFile.read", payload)
+    },
+    settings: {
+        setUseEmbeddedBrowser: (value) => ipcRenderer.invoke("settings.setUseEmbeddedBrowser", value)
     }
 });

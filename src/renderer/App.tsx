@@ -1,4 +1,5 @@
 import { Fragment, Suspense, lazy, memo, startTransition, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import Icon from "./components/Icon";
 import ReactMarkdown from "react-markdown";
 import { buildCommandString, categories, createDefaultParamValues, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
 import { fallbackApi, matchesFilter, normalizeLogcatRefreshIntervalMs, normalizeLogcatLevelSelection, fetchDevApi, postDevApi } from "./lib/fallbackApi";
@@ -450,6 +451,7 @@ interface GeneralSettingsRules {
   closeSettingsOnSave: boolean;
   apkExportMode: "fixed-directory" | "custom-directory";
   apkExportDirectory: string;
+  useEmbeddedBrowser: boolean;
 }
 
 interface SavedRemoteDeviceConfig {
@@ -1446,22 +1448,23 @@ function loadStoredThemeId() {
 
 function loadGeneralSettingsRules(): GeneralSettingsRules {
   if (typeof window === "undefined") {
-    return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "" };
+    return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "", useEmbeddedBrowser: false };
   }
 
   try {
     const raw = window.localStorage.getItem(GENERAL_SETTINGS_STORAGE_KEY);
     if (!raw) {
-      return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "" };
+      return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "", useEmbeddedBrowser: false };
     }
     const parsed = JSON.parse(raw) as Partial<GeneralSettingsRules>;
     return {
       closeSettingsOnSave: Boolean(parsed.closeSettingsOnSave),
       apkExportMode: parsed.apkExportMode === "fixed-directory" ? "fixed-directory" : "custom-directory",
       apkExportDirectory: typeof parsed.apkExportDirectory === "string" ? parsed.apkExportDirectory : "",
+      useEmbeddedBrowser: Boolean(parsed.useEmbeddedBrowser),
     };
   } catch {
-    return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "" };
+    return { closeSettingsOnSave: false, apkExportMode: "custom-directory", apkExportDirectory: "", useEmbeddedBrowser: false };
   }
 }
 
@@ -2094,7 +2097,7 @@ function LayoutPopoutPanel({ panelId, runtimeApi }: { panelId: number; runtimeAp
     return (
       <Fragment key={node.path}>
         <div className={`layout-tree-node ${isSelected ? "layout-tree-node-selected" : ""}`} style={{ paddingLeft: depth * 16 + 8 }} onClick={() => { setSelectedPath(node.path); runtimeApi.layout.updatePopoutSelection({ selectedPath: node.path }); if (hasChildren) setExpandedNodes((p) => { const n = new Set(p); n.has(node.path) ? n.delete(node.path) : n.add(node.path); return n; }); }}>
-          <span className="layout-tree-toggle">{hasChildren ? (isExpanded ? "▼" : "▶") : "　"}</span>
+          <span className="layout-tree-toggle">{hasChildren ? (isExpanded ? <Icon name="collapse-list" size={10} /> : <Icon name="expand-list" size={10} />) : "　"}</span>
           <span className="layout-tree-label">{getUiNodeLabel(node)}</span>
         </div>
         {isExpanded && hasChildren ? node.children.map((c) => renderTreeNode(c, depth + 1)) : null}
@@ -2435,10 +2438,38 @@ export default function App() {
   const [crashContentLoading, setCrashContentLoading] = useState(false);
   const [bugreportRunning, setBugreportRunning] = useState(false);
   const [bugreportResult, setBugreportResult] = useState<string | null>(null);
+  const [bugreportFiles, setBugreportFiles] = useState<{ name: string; path: string; size: number; mtime: number }[]>([]);
+
+  async function loadBugreportFiles() {
+    try {
+      const api = (window as any).adbHelperApi?.bugreport;
+      if (!api?.listFiles) return;
+      const result = await api.listFiles();
+      if (result.status === "ok") setBugreportFiles(result.files ?? []);
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadBugreportFiles();
+  }, []);
   const [traceRunning, setTraceRunning] = useState(false);
   const [traceDuration, setTraceDuration] = useState("5");
   const [traceCategories, setTraceCategories] = useState<string[]>(["gfx", "view", "wm", "am", "sched"]);
   const [traceResult, setTraceResult] = useState<string | null>(null);
+  const [traceFiles, setTraceFiles] = useState<{ name: string; path: string; size: number; mtime: number }[]>([]);
+
+  async function loadTraceFiles() {
+    try {
+      const api = (window as any).adbHelperApi?.trace;
+      if (!api?.listFiles) return;
+      const result = await api.listFiles();
+      if (result.status === "ok") setTraceFiles(result.files ?? []);
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadTraceFiles();
+  }, []);
 
   const [logcatSearchTerm, setLogcatSearchTerm] = useState("");
   const [logcatRegexEnabled, setLogcatRegexEnabled] = useState(false);
@@ -3048,6 +3079,17 @@ export default function App() {
 
     window.localStorage.setItem(GENERAL_SETTINGS_STORAGE_KEY, JSON.stringify(generalSettingsRules));
   }, [generalSettingsRules]);
+
+  const _settingsSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!_settingsSyncedRef.current) {
+      _settingsSyncedRef.current = true;
+    }
+    const api = (window as any).adbHelperApi?.settings;
+    if (api?.setUseEmbeddedBrowser) {
+      api.setUseEmbeddedBrowser(generalSettingsRules.useEmbeddedBrowser).catch(() => {});
+    }
+  }, [generalSettingsRules.useEmbeddedBrowser]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -6957,7 +6999,7 @@ export default function App() {
         />
       ) : null}
 
-      {activeMainView === "layout" ? (
+      <div style={{ display: activeMainView === "layout" ? "contents" : "none" }}>
         <LayoutPage
           currentDeviceLabel={currentDeviceLabel}
           currentDeviceId={currentDeviceId}
@@ -7008,7 +7050,7 @@ export default function App() {
           layoutPreviewZoom={layoutPreviewZoom}
           setLayoutPreviewZoom={setLayoutPreviewZoom}
         />
-      ) : null}
+      </div>
 
       {activeMainView === "dumpsys" ? (
         <DumpsysPage currentDeviceId={currentDeviceId} runtimeApi={runtimeApi} />
@@ -7138,6 +7180,8 @@ export default function App() {
             setBugreportRunning,
             bugreportResult,
             setBugreportResult,
+            bugreportFiles,
+            loadBugreportFiles,
           }}
           trace={{
             traceDuration,
@@ -7148,6 +7192,8 @@ export default function App() {
             setTraceRunning,
             traceResult,
             setTraceResult,
+            traceFiles,
+            loadTraceFiles,
           }}
           shared={{
             currentDeviceLabel,
@@ -7853,6 +7899,18 @@ export default function App() {
                 ) : (
                   <div className="inline-tip">启用后，“拉取 APK”会先弹出目录选择器。</div>
                 )}
+                <div className="theme-panel-head" style={{ marginTop: 16 }}>
+                  <p className="section-kicker">浏览器规则</p>
+                </div>
+                <label className="param-toggle-row logcat-regex-toggle">
+                  <input
+                    type="checkbox"
+                    checked={generalSettingsRulesDraft.useEmbeddedBrowser}
+                    onChange={(event) => setGeneralSettingsRulesDraft((current) => ({ ...current, useEmbeddedBrowser: event.target.checked }))}
+                  />
+                  <span>内置浏览器打开网页</span>
+                </label>
+                <div className="inline-tip">勾选后，Perfetto 等外部链接将在应用内置浏览器中打开；否则使用系统默认浏览器。</div>
                 <div className="page-actions">
                   <button className="ghost-button" onClick={() => setGeneralSettingsRulesDraft(generalSettingsRules)}>重置草稿</button>
                   <button className="primary-button" onClick={handleSaveGeneralSettingsRules}>保存规则</button>

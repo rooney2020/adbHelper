@@ -1,3 +1,5 @@
+import Icon from "../components/Icon";
+
 export default function CommandPage({ layout, panelList, panelCommands, workspace, result }: any) {
   return (
     <main
@@ -87,7 +89,7 @@ export default function CommandPage({ layout, panelList, panelCommands, workspac
                     <button className="catalog-quick-run-btn" onClick={(event) => {
                       event.stopPropagation();
                       void panelCommands.runPanelCommandBlock(block);
-                    }}>▶ 执行</button>
+                    }}><Icon name="start" size={12} /> 执行</button>
                   </div>
                 </div>
               </article>

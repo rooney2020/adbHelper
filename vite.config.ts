@@ -395,8 +395,8 @@ export default defineConfig({
                   }
                 }
                 if (config.throttle > 0) monkeyArgs.push("--throttle", String(config.throttle));
-                if (config.pctTouch >= 0) monkeyArgs.push("--pct-touch", String(config.pctTouch));
-                if (config.pctMotion >= 0) monkeyArgs.push("--pct-motion", String(config.pctMotion));
+                if (config.pctTouch > 0) monkeyArgs.push("--pct-touch", String(config.pctTouch));
+                if (config.pctMotion > 0) monkeyArgs.push("--pct-motion", String(config.pctMotion));
                 if (config.pctTrackball > 0) monkeyArgs.push("--pct-trackball", String(config.pctTrackball));
                 if (config.pctNav > 0) monkeyArgs.push("--pct-nav", String(config.pctNav));
                 if (config.pctMajornav > 0) monkeyArgs.push("--pct-majornav", String(config.pctMajornav));
@@ -411,6 +411,7 @@ export default defineConfig({
                 if (config.ignoreCrashes) monkeyArgs.push("--ignore-crashes");
                 if (config.ignoreTimeouts) monkeyArgs.push("--ignore-timeouts");
                 if (config.ignoreSecurityExceptions) monkeyArgs.push("--ignore-security-exceptions");
+                if (config.ignoreNativeCrashes) monkeyArgs.push("--ignore-native-crashes");
                 if (config.killProcessAfterError) monkeyArgs.push("--kill-process-after-error");
                 if (config.monitorNativeCrashes) monkeyArgs.push("--monitor-native-crashes");
                 monkeyArgs.push(String(config.eventCount || 10000));

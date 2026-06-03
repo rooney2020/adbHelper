@@ -95,13 +95,28 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
   },
   crash: {
     list: (payload: { deviceId: string }) => ipcRenderer.invoke("crash.list", payload),
-    read: (payload: { deviceId: string; filePath: string }) => ipcRenderer.invoke("crash.read", payload)
+    read: (payload: { deviceId: string; filePath: string }) => ipcRenderer.invoke("crash.read", payload),
+    export: (payload: { deviceId: string; filePaths: string[]; outputDir?: string }) => ipcRenderer.invoke("crash.export", payload)
   },
   bugreport: {
-    fetch: (payload: { deviceId: string }) => ipcRenderer.invoke("bugreport.fetch", payload)
+    fetch: (payload: { deviceId: string }) => ipcRenderer.invoke("bugreport.fetch", payload),
+    listFiles: () => ipcRenderer.invoke("bugreport.listFiles")
   },
   trace: {
     start: (payload: { deviceId: string; duration: number; categories: string[] }) => ipcRenderer.invoke("trace.start", payload),
-    readFile: (payload: { path: string }) => ipcRenderer.invoke("trace.readFile", payload)
+    readFile: (payload: { path: string }) => ipcRenderer.invoke("trace.readFile", payload),
+    openInPerfetto: (payload: { path: string }) => ipcRenderer.invoke("trace.openInPerfetto", payload),
+    listFiles: () => ipcRenderer.invoke("trace.listFiles")
+  },
+  monkey: {
+    start: (payload: { deviceId: string; config: any }) => ipcRenderer.invoke("monkey.start", payload),
+    stop: (payload: { deviceId: string }) => ipcRenderer.invoke("monkey.stop", payload),
+    status: (payload: { deviceId: string }) => ipcRenderer.invoke("monkey.status", payload)
+  },
+  localFile: {
+    read: (payload: { path: string }) => ipcRenderer.invoke("localFile.read", payload)
+  },
+  settings: {
+    setUseEmbeddedBrowser: (value: boolean) => ipcRenderer.invoke("settings.setUseEmbeddedBrowser", value)
   }
 });

@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Icon from "../components/Icon";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -164,19 +165,31 @@ export default function MonkeyPage({ currentDeviceId }: MonkeyPageProps) {
     if (!currentDeviceId) return;
     let cancelled = false;
     setAppsLoading(true);
-    fetch(`/api/adb-helper/monkey-apps?deviceId=${encodeURIComponent(currentDeviceId)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) {
-          if (data.status === "ok") {
-            setDeviceApps(data.packages ?? []);
-          } else if (data.packages) {
-            setDeviceApps(data.packages);
-          }
+    const doFetch = async () => {
+      try {
+        const api = (window as any).adbHelperApi;
+        let data: any = null;
+        if (api && api.status === "ipc-ready") {
+          data = await api.device.apps({ deviceId: currentDeviceId });
+        } else {
+          const resp = await fetch(`/api/adb-helper/monkey-apps?deviceId=${encodeURIComponent(currentDeviceId)}`);
+          data = await resp.json();
         }
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setAppsLoading(false); });
+        if (!cancelled) {
+          let packages: string[] = [];
+          if (data.packages && Array.isArray(data.packages)) {
+            packages = data.packages.filter((p: any) => typeof p === "string");
+          } else if (data.items && Array.isArray(data.items)) {
+            packages = data.items.map((p: any) => p.packageName ?? p.name ?? String(p)).filter(Boolean);
+          } else if (Array.isArray(data)) {
+            packages = data.map((p: any) => typeof p === "string" ? p : p.packageName ?? p.name).filter(Boolean);
+          }
+          setDeviceApps(packages);
+        }
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setAppsLoading(false); }
+    };
+    doFetch();
     return () => { cancelled = true; };
   }, [currentDeviceId]);
 
@@ -186,32 +199,37 @@ export default function MonkeyPage({ currentDeviceId }: MonkeyPageProps) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       return;
     }
-    const poll = () => {
-      fetch(`/api/adb-helper/monkey-status?deviceId=${encodeURIComponent(currentDeviceId)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.status === "ok") {
-            setStatus(data.monkeyStatus);
-            if (data.newLogs && data.newLogs.length > 0) {
-              setLogs((prev) => {
-                const newEntries: MonkeyLogEntry[] = data.newLogs.map((line: string) => ({
-                  id: `mlog-${++logIdCounter.current}`,
-                  timestamp: new Date().toLocaleTimeString(),
-                  level: classifyLogLine(line),
-                  message: line,
-                  raw: line,
-                }));
-                const combined = [...prev, ...newEntries];
-                return combined.length > LOG_BUFFER_LIMIT ? combined.slice(-LOG_BUFFER_LIMIT) : combined;
-              });
-            }
-            if (!data.monkeyStatus.running && data.report) {
-              setReport(data.report);
-              setShowReport(true);
-            }
+    const poll = async () => {
+      try {
+        const api = (window as any).adbHelperApi;
+        let data: any;
+        if (api && api.status === "ipc-ready") {
+          data = await api.monkey.status({ deviceId: currentDeviceId });
+        } else {
+          const resp = await fetch(`/api/adb-helper/monkey-status?deviceId=${encodeURIComponent(currentDeviceId)}`);
+          data = await resp.json();
+        }
+        if (data.status === "ok") {
+          setStatus(data.monkeyStatus);
+          if (data.newLogs && data.newLogs.length > 0) {
+            setLogs((prev) => {
+              const newEntries: MonkeyLogEntry[] = data.newLogs.map((line: string) => ({
+                id: `mlog-${++logIdCounter.current}`,
+                timestamp: new Date().toLocaleTimeString(),
+                level: classifyLogLine(line),
+                message: line,
+                raw: line,
+              }));
+              const combined = [...prev, ...newEntries];
+              return combined.length > LOG_BUFFER_LIMIT ? combined.slice(-LOG_BUFFER_LIMIT) : combined;
+            });
           }
-        })
-        .catch(() => {});
+          if (!data.monkeyStatus.running && data.report) {
+            setReport(data.report);
+            setShowReport(true);
+          }
+        }
+      } catch {}
     };
     pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
     poll();
@@ -233,12 +251,18 @@ export default function MonkeyPage({ currentDeviceId }: MonkeyPageProps) {
     setReport(null);
     setShowReport(false);
     try {
-      const resp = await fetch("/api/adb-helper/monkey-start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId: currentDeviceId, config }),
-      });
-      const data = await resp.json();
+      const api = (window as any).adbHelperApi;
+      let data: any;
+      if (api && api.status === "ipc-ready") {
+        data = await api.monkey.start({ deviceId: currentDeviceId, config });
+      } else {
+        const resp = await fetch("/api/adb-helper/monkey-start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: currentDeviceId, config }),
+        });
+        data = await resp.json();
+      }
       if (data.status === "ok") {
         setStatus({ running: true, pid: data.pid, totalEvents: config.eventCount, completedEvents: 0 });
       }
@@ -251,12 +275,18 @@ export default function MonkeyPage({ currentDeviceId }: MonkeyPageProps) {
     if (!currentDeviceId || stopping) return;
     setStopping(true);
     try {
-      const resp = await fetch("/api/adb-helper/monkey-stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId: currentDeviceId }),
-      });
-      const data = await resp.json();
+      const api = (window as any).adbHelperApi;
+      let data: any;
+      if (api && api.status === "ipc-ready") {
+        data = await api.monkey.stop({ deviceId: currentDeviceId });
+      } else {
+        const resp = await fetch("/api/adb-helper/monkey-stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: currentDeviceId }),
+        });
+        data = await resp.json();
+      }
       if (data.status === "ok") {
         setStatus({ running: false });
         if (data.report) {
@@ -343,7 +373,7 @@ export default function MonkeyPage({ currentDeviceId }: MonkeyPageProps) {
               disabled={status.running || starting || !currentDeviceId}
               onClick={handleStart}
             >
-              {starting ? "启动中..." : "▶ 开始测试"}
+              {starting ? "启动中..." : <><Icon name="start" size={12} /> 开始测试</>}
             </button>
             <button
               className="monkey-btn monkey-btn-danger"

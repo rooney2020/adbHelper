@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import Icon from "../components/Icon";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -85,9 +86,27 @@ function PackageSelector({ deviceId, value, onChange, disabled }: { deviceId: st
     if (!deviceId) return;
     setLoading(true);
     try {
-      const resp = await fetch(`/api/adb-helper/monkey-apps?deviceId=${encodeURIComponent(deviceId)}`);
-      const json = await resp.json();
-      if (json.status === "ok") setApps(json.packages ?? []);
+      const api = (window as any).adbHelperApi;
+      let json: any = null;
+      if (api && api.status === "ipc-ready") {
+        json = await api.device.apps({ deviceId });
+      } else {
+        const resp = await fetch(`/api/adb-helper/monkey-apps?deviceId=${encodeURIComponent(deviceId)}`);
+        json = await resp.json();
+      }
+      if (json.status === "ok") {
+        let packages: string[] = [];
+        if (json.packages && Array.isArray(json.packages)) {
+          packages = json.packages.filter((p: any) => typeof p === "string");
+        } else if (json.items && Array.isArray(json.items)) {
+          packages = json.items.map((p: any) => p.packageName ?? p.name ?? String(p)).filter(Boolean);
+        }
+        setApps(packages);
+      } else if (json.packages) {
+        setApps(json.packages.filter((p: any) => typeof p === "string"));
+      } else if (Array.isArray(json)) {
+        setApps(json.map((p: any) => typeof p === "string" ? p : p.packageName ?? p.name).filter(Boolean));
+      }
     } catch { /* ignore */ }
     setLoading(false);
   }, [deviceId]);
@@ -1506,7 +1525,7 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
   const runScenario = useCallback(async (scenario: Scenario) => {
     if (!deviceId) return;
     setRunning(true);
-    setRunLog([`▶ 开始执行场景: ${scenario.name}`]);
+    setRunLog([`<Icon name="start" size={12} /> 开始执行场景: ${scenario.name}`]);
     const pkg = scenario.package;
 
     for (const step of scenario.steps) {
@@ -1557,11 +1576,11 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
 
   const stepTypeLabel = (type: ScenarioStep["type"]) => {
     switch (type) {
-      case "start-app": return "🚀 启动应用";
+      case "start-app": return <><Icon name="start" size={12} /> 启动应用</>;
       case "wait": return "⏱ 等待";
       case "monkey": return "🐵 Monkey 测试";
-      case "collect-metrics": return "📊 采集指标";
-      case "shell-cmd": return "💻 Shell 命令";
+      case "collect-metrics": return <><Icon name="table" size={12} /> 采集指标</>;
+      case "shell-cmd": return <><Icon name="start" size={12} /> Shell 命令</>;
     }
   };
 

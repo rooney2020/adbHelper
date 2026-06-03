@@ -1,4 +1,46 @@
-import { Fragment } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
+import Icon from "../components/Icon";
+
+function VideoPlayer({ item }: { item: any }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    setError(null);
+    const api = (window as any).adbHelperApi?.localFile;
+    if (!api) { setError("IPC 接口不可用"); return; }
+    api.read({ path: item.localPath }).then((result: any) => {
+      if (!mountedRef.current) return;
+      if (result.status !== "ok") { setError(result.message ?? "读取失败"); return; }
+      try {
+        const binaryString = atob(result.data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mimeType ?? "video/mp4" });
+        const url = URL.createObjectURL(blob);
+        setBlobUrl(url);
+        return () => { if (url) URL.revokeObjectURL(url); };
+      } catch { setError("视频数据解码失败"); }
+    }).catch((err: any) => { if (mountedRef.current) setError(err?.message ?? "请求失败"); });
+    return () => { mountedRef.current = false; };
+  }, [item.localPath]);
+
+  return (
+    <div style={{ maxWidth: "320px", border: "1px solid #e0e0e0", borderRadius: "8px", overflow: "hidden" }}>
+      <div style={{ padding: "4px 8px", fontSize: "11px", background: "#e3fcec", borderBottom: "1px solid #c8e6c9" }}>📹 Display {item.displayId}</div>
+      {blobUrl ? (
+        <video src={blobUrl} controls style={{ width: "100%", display: "block", cursor: "pointer" }} onClick={(event) => { (event.target as HTMLVideoElement).requestFullscreen?.(); }} />
+      ) : error ? (
+        <div style={{ padding: "12px", fontSize: "12px", color: "#999", textAlign: "center" }}>{error}</div>
+      ) : (
+        <div style={{ padding: "12px", fontSize: "12px", color: "#999", textAlign: "center" }}>加载视频中...</div>
+      )}
+      <div style={{ padding: "4px 8px", fontSize: "11px", color: "#666", wordBreak: "break-all" }}>{item.localPath}</div>
+    </div>
+  );
+}
 
 export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoTab, basic, files, apps, users, processes, screen, shared }: any) {
   const DeviceAppListButton = apps.DeviceAppListButton;
@@ -755,14 +797,10 @@ export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoT
                   <div style={{ marginBottom: "12px" }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
                       {screen.screenRecordResults.map((item: any, index: number) => (
-                        <div key={index} style={{ maxWidth: "320px", border: "1px solid #e0e0e0", borderRadius: "8px", overflow: "hidden" }}>
-                          <div style={{ padding: "4px 8px", fontSize: "11px", background: "#e3fcec", borderBottom: "1px solid #c8e6c9" }}>📹 Display {item.displayId}</div>
-                          <video src={`/api/adb-helper/local-file?path=${encodeURIComponent(item.localPath)}`} controls style={{ width: "100%", display: "block", cursor: "pointer" }} onClick={(event) => { (event.target as HTMLVideoElement).requestFullscreen?.(); }} />
-                          <div style={{ padding: "4px 8px", fontSize: "11px", color: "#666", wordBreak: "break-all" }}>{item.localPath}</div>
-                        </div>
+                        <VideoPlayer key={index} item={item} />
                       ))}
                     </div>
-                    <button type="button" className="ghost-button compact-button" style={{ marginTop: "8px" }} onClick={() => void shared.handleOpenLocalPath(screen.screenRecordResults[0].localPath)}>📂 打开目录</button>
+                    <button type="button" className="ghost-button compact-button" style={{ marginTop: "8px" }} onClick={() => void shared.handleOpenLocalPath(screen.screenRecordResults[0].localPath)}><Icon name="folder" size={12} /> 打开目录</button>
                   </div>
                 ) : null}
 
@@ -776,7 +814,7 @@ export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoT
                         </div>
                       ))}
                     </div>
-                    {screen.screenCaptureResults.some((item: any) => item.savedPath) ? <button type="button" className="ghost-button compact-button" style={{ marginTop: "8px" }} onClick={() => void shared.handleOpenLocalPath(screen.screenCaptureResults.find((item: any) => item.savedPath).savedPath)}>📂 打开目录</button> : null}
+                    {screen.screenCaptureResults.some((item: any) => item.savedPath) ? <button type="button" className="ghost-button compact-button" style={{ marginTop: "8px" }} onClick={() => void shared.handleOpenLocalPath(screen.screenCaptureResults.find((item: any) => item.savedPath).savedPath)}><Icon name="folder" size={12} /> 打开目录</button> : null}
                   </div>
                 ) : (
                   <div className="result-empty-state">点击"截屏"按钮获取设备当前画面。</div>

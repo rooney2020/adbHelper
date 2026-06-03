@@ -2182,7 +2182,8 @@ def handle_crash_list(args: argparse.Namespace) -> None:
             pass  # Directory may not exist or no permission
 
         # List dropbox files from /data/system/dropbox/
-        dropbox: list[dict[str, Any]] = []
+        from collections import defaultdict
+        dropbox_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
         try:
             output = run_adb(["-s", args.device, "shell", "ls", "-la", "/data/system/dropbox/"])
             for line in output.splitlines():
@@ -2198,16 +2199,28 @@ def handle_crash_list(args: argparse.Namespace) -> None:
                 size = parts[4]
                 date = f"{parts[5]} {parts[6]}"
                 path = f"/data/system/dropbox/{name}"
+                display_name = name
                 if name.endswith(".pb"):
-                    name += " (binary)"
-                dropbox.append({
-                    "name": name,
+                    display_name += " (binary)"
+                tag = name.split("@")[0] if "@" in name else name
+                entry = {
+                    "name": display_name,
                     "path": path,
                     "size": size,
                     "date": date,
-                })
+                    "tag": tag,
+                }
+                dropbox_groups[tag].append(entry)
         except subprocess.SubprocessError:
             pass
+
+        # Flatten groups into sorted list with group headers
+        dropbox: list[dict[str, Any]] = []
+        for tag in sorted(dropbox_groups.keys()):
+            for entry in dropbox_groups[tag]:
+                entry_copy = dict(entry)
+                entry_copy["groupTag"] = tag
+                dropbox.append(entry_copy)
 
         emit({
             "command": "crash-list",
@@ -2235,13 +2248,17 @@ def handle_crash_read(args: argparse.Namespace) -> None:
     try:
         ensure_adb_available()
         ensure_device_ready(args.device)
-        output = run_adb(["-s", args.device, "shell", "cat", args.file_path])
+        raw = run_adb_bytes(["-s", args.device, "shell", "cat", args.file_path])
+        import base64
+        b64_content = base64.b64encode(raw).decode("ascii")
+        is_binary = any(b > 0x7f for b in raw[:min(len(raw), 256)])
         emit({
             "command": "crash-read",
             "status": "ok",
             "device": args.device,
             "filePath": args.file_path,
-            "content": output,
+            "content": b64_content,
+            "isBinary": is_binary,
             "message": f"已读取文件: {args.file_path}",
         })
     except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
@@ -2251,6 +2268,47 @@ def handle_crash_read(args: argparse.Namespace) -> None:
             "device": args.device,
             "filePath": args.file_path,
             "content": "",
+            "isBinary": False,
+            "message": str(error),
+        })
+
+
+def handle_crash_export(args: argparse.Namespace) -> None:
+    """Export crash/ANR files from device to local directory."""
+    import os
+    try:
+        ensure_adb_available()
+        ensure_device_ready(args.device)
+        os.makedirs(args.output_dir, exist_ok=True)
+        exported: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        for file_path in args.file_paths:
+            fname = file_path.rsplit("/", 1)[-1]
+            local_path = os.path.join(args.output_dir, fname)
+            try:
+                raw = run_adb_bytes(["-s", args.device, "shell", "cat", file_path])
+                with open(local_path, "wb") as f:
+                    f.write(raw)
+                exported.append({"path": file_path, "localPath": local_path, "size": len(raw)})
+            except Exception as e:
+                failed.append({"path": file_path, "error": str(e)})
+        emit({
+            "command": "crash-export",
+            "status": "ok",
+            "device": args.device,
+            "exported": exported,
+            "failed": failed,
+            "outputDir": args.output_dir,
+            "message": f"导出完成: {len(exported)} 成功, {len(failed)} 失败",
+        })
+    except (FileNotFoundError, subprocess.SubprocessError, RuntimeError, OSError) as error:
+        emit({
+            "command": "crash-export",
+            "status": "error",
+            "device": args.device,
+            "exported": [],
+            "failed": [],
+            "outputDir": args.output_dir,
             "message": str(error),
         })
 
@@ -2442,6 +2500,12 @@ def build_parser() -> argparse.ArgumentParser:
     crash_read.add_argument("--device", required=True)
     crash_read.add_argument("--file-path", required=True, dest="file_path")
     crash_read.set_defaults(func=handle_crash_read)
+
+    crash_export = subparsers.add_parser("crash-export")
+    crash_export.add_argument("--device", required=True)
+    crash_export.add_argument("--file-paths", required=True, nargs="+", dest="file_paths")
+    crash_export.add_argument("--output-dir", required=True, dest="output_dir")
+    crash_export.set_defaults(func=handle_crash_export)
 
     keysim_screenshot = subparsers.add_parser("keysim-screenshot")
     keysim_screenshot.add_argument("--device", required=True)

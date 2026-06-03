@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useRef, type CSSProperties, type Dispatch, type MouseEvent as ReactMouseEvent, type ReactNode, type SetStateAction } from "react";
+import Icon from "../components/Icon";
 
 type LayoutViewerTab = "winscope" | "inspector";
 type PanelIndex = 0 | 1 | 2;
@@ -282,7 +283,7 @@ export default function LayoutPage({
             }
           }}
         >
-          <span className="layout-tree-toggle">{hasChildren ? (isExpanded ? "▼" : "▶") : "　"}</span>
+          <span className="layout-tree-toggle">{hasChildren ? (isExpanded ? <Icon name="collapse-list" size={10} /> : <Icon name="expand-list" size={10} />) : "　"}</span>
           <span className="layout-tree-label">{getUiNodeLabel(node)}</span>
         </div>
         {isExpanded && hasChildren ? node.children.map((child) => renderTreeNode(child, depth + 1)) : null}
@@ -449,86 +450,76 @@ export default function LayoutPage({
               <button className={`device-info-tab ${layoutViewerTab === "inspector" ? "active" : ""}`} onClick={() => setLayoutViewerTab("inspector")}>Layout Inspector</button>
             </nav>
             <div className="device-info-content" style={{ flex: 1, minHeight: 0 }}>
-              {layoutViewerTab === "winscope" ? (
-                <div className="layout-viewer-winscope-container">
-                  {layoutWinscopeToken === null ? (
-                    <div className="result-empty-state">
-                      <p>正在启动 Winscope Proxy...</p>
-                    </div>
-                  ) : (
-                    <iframe
-                      src={`${window.location.protocol === "file:" ? "winscope://" : "/"}winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
-                      className="layout-viewer-winscope-iframe"
-                      title="Winscope"
-                      onLoad={(event) => {
-                        const iframe = event.currentTarget;
-                        const deviceId = currentDeviceId;
-                        const deviceName = currentDeviceName;
-                        if (!deviceId) return;
-                        const matchTexts = [deviceId, deviceName].filter(Boolean);
-                        let attempts = 0;
-                        const trySelect = () => {
-                          attempts++;
-                          if (attempts > 30) return;
-                          try {
-                            const doc = iframe.contentDocument;
-                            if (!doc) {
-                              setTimeout(trySelect, 500);
-                              return;
-                            }
-                            const changeDeviceLink = Array.from(doc.querySelectorAll("a, button, span")).find((el) => el.textContent?.includes("CHANGE DEVICE")) as HTMLElement | undefined;
-                            if (changeDeviceLink) {
-                              const currentText = changeDeviceLink.closest(".device-choice, [class*=device]")?.textContent ?? doc.body.textContent ?? "";
-                              if (matchTexts.some((text) => currentText.includes(text))) return;
-                              changeDeviceLink.click();
-                              setTimeout(trySelect, 500);
-                              return;
-                            }
-                            const deviceChoice = doc.querySelector(".device-choice");
-                            if (deviceChoice) {
-                              const labels = deviceChoice.querySelectorAll("label, .device-choice *");
-                              for (const label of labels) {
-                                if (matchTexts.some((text) => label.textContent?.includes(text))) {
-                                  const input = label.querySelector("input") ?? label.previousElementSibling;
-                                  if (input && input.tagName === "INPUT") {
-                                    (input as HTMLInputElement).click();
-                                  } else {
-                                    (label as HTMLElement).click();
-                                  }
-                                  return;
-                                }
-                              }
-                            }
-                            const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-                            let node: Node | null;
-                            while ((node = walker.nextNode())) {
-                              if (matchTexts.some((text) => node?.textContent?.includes(text))) {
-                                const parent = node.parentElement;
-                                if (parent) {
-                                  parent.click();
-                                  return;
-                                }
-                              }
-                            }
-                          } catch {
-                            // not ready yet
+              <div className="layout-viewer-winscope-container" style={{ display: layoutViewerTab === "winscope" ? "flex" : "none" }}>
+                {layoutWinscopeToken === null ? (
+                  <div className="result-empty-state">
+                    <p>正在启动 Winscope Proxy...</p>
+                  </div>
+                ) : (
+                  <iframe
+                    src={`${window.location.protocol === "file:" ? "winscope://" : "/"}winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
+                    className="layout-viewer-winscope-iframe"
+                    title="Winscope"
+                    onLoad={(event) => {
+                      const iframe = event.currentTarget;
+                      const deviceId = currentDeviceId;
+                      const deviceName = currentDeviceName;
+                      if (!deviceId) return;
+                      const matchTexts = [deviceId, deviceName].filter(Boolean);
+                      let attempts = 0;
+                      const trySelect = () => {
+                        attempts++;
+                        if (attempts > 30) return;
+                        try {
+                          const doc = iframe.contentDocument;
+                          if (!doc) {
+                            setTimeout(trySelect, 500);
+                            return;
                           }
-                          setTimeout(trySelect, 500);
-                        };
-                        setTimeout(trySelect, 2000);
-                      }}
-                    />
-                  )}
-                </div>
-              ) : null}
-
-              {layoutViewerTab !== "winscope" && layoutWinscopeToken ? (
-                <iframe
-                  src={`${window.location.protocol === "file:" ? "winscope://" : "/"}winscope/index.html${layoutWinscopeToken ? `?token=${layoutWinscopeToken}` : ""}`}
-                  className="layout-viewer-winscope-iframe layout-viewer-winscope-hidden"
-                  title="Winscope (background)"
-                />
-              ) : null}
+                          const changeDeviceLink = Array.from(doc.querySelectorAll("a, button, span")).find((el) => el.textContent?.includes("CHANGE DEVICE")) as HTMLElement | undefined;
+                          if (changeDeviceLink) {
+                            const currentText = changeDeviceLink.closest(".device-choice, [class*=device]")?.textContent ?? doc.body.textContent ?? "";
+                            if (matchTexts.some((text) => currentText.includes(text))) return;
+                            changeDeviceLink.click();
+                            setTimeout(trySelect, 500);
+                            return;
+                          }
+                          const deviceChoice = doc.querySelector(".device-choice");
+                          if (deviceChoice) {
+                            const labels = deviceChoice.querySelectorAll("label, .device-choice *");
+                            for (const label of labels) {
+                              if (matchTexts.some((text) => label.textContent?.includes(text))) {
+                                const input = label.querySelector("input") ?? label.previousElementSibling;
+                                if (input && input.tagName === "INPUT") {
+                                  (input as HTMLInputElement).click();
+                                } else {
+                                  (label as HTMLElement).click();
+                                }
+                                return;
+                              }
+                            }
+                          }
+                          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+                          let node: Node | null;
+                          while ((node = walker.nextNode())) {
+                            if (matchTexts.some((text) => node?.textContent?.includes(text))) {
+                              const parent = node.parentElement;
+                              if (parent) {
+                                parent.click();
+                                return;
+                              }
+                            }
+                          }
+                        } catch {
+                          // not ready yet
+                        }
+                        setTimeout(trySelect, 500);
+                      };
+                      setTimeout(trySelect, 2000);
+                    }}
+                  />
+                )}
+              </div>
 
               {layoutViewerTab === "inspector" ? (
                 <div className="layout-inspector-container">
@@ -798,7 +789,7 @@ export default function LayoutPage({
                                 toggleCollapse(index);
                               }
                             }}>
-                              ▶ {panelNames[index]}{layoutPoppedPanel === index ? "（已弹出，点击回收）" : ""}
+                              <Icon name="start" size={12} /> {panelNames[index]}{layoutPoppedPanel === index ? "（已弹出，点击回收）" : ""}
                             </button>
                           ))}
                         </div>

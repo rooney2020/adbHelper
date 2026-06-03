@@ -1,5 +1,43 @@
+import Icon from "../components/Icon";
+import { useState, useCallback } from "react";
+
+interface SortState { field: string; asc: boolean; }
+
 export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: any) {
   const LogcatRow = logcat.LogcatRow;
+  const [tombstoneSort, setTombstoneSort] = useState<SortState>({ field: "", asc: true });
+  const [anrSort, setAnrSort] = useState<SortState>({ field: "", asc: true });
+  const [dropboxSort, setDropboxSort] = useState<SortState>({ field: "", asc: true });
+
+  const makeSortHandler = useCallback((category: "tombstone" | "anr" | "dropbox") => (field: string) => {
+    const setter = category === "tombstone" ? setTombstoneSort : category === "anr" ? setAnrSort : setDropboxSort;
+    return () => {
+      setter((prev: SortState) => {
+        const asc = prev.field === field ? !prev.asc : true;
+        return { field, asc };
+      });
+      const files = crash.crashFiles[category === "tombstone" ? "tombstones" : category === "anr" ? "anr" : "dropbox"];
+      let sorted: any[];
+      if (field === "name") sorted = [...files].sort((a: any, b: any) => a.name.localeCompare(b.name));
+      else if (field === "date") sorted = [...files].sort((a: any, b: any) => a.date.localeCompare(b.date));
+      else if (field === "size") sorted = [...files].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size));
+      else return;
+      const current = category === "tombstone" ? tombstoneSort : category === "anr" ? anrSort : dropboxSort;
+      const isAsc = current.field === field ? !current.asc : true;
+      if (!isAsc) sorted.reverse();
+      if (category === "tombstone") crash.setCrashFiles({ ...crash.crashFiles, tombstones: sorted });
+      else if (category === "anr") crash.setCrashFiles({ ...crash.crashFiles, anr: sorted });
+      else crash.setCrashFiles({ ...crash.crashFiles, dropbox: sorted });
+    };
+  }, [crash.crashFiles, tombstoneSort, anrSort, dropboxSort]);
+
+  const sortBtnStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: "9px", padding: "1px 6px",
+    background: active ? "#e8f4fd" : "transparent",
+    color: active ? "#0984e3" : "#666",
+    border: active ? "1px solid #74b9ff" : "1px solid transparent",
+    borderRadius: "3px"
+  });
 
   return (
     <main className="page-shell">
@@ -249,11 +287,32 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
             ) : null}
 
             {logcat.logcatPageTab === "crash" ? (
-              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "12px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-                  <h4 style={{ margin: 0 }}>Crash / ANR</h4>
-                  <span style={{ fontSize: "11px", color: "#999" }}>需要 root 权限</span>
-                  <button className="primary-button" style={{ marginLeft: "auto" }} disabled={crash.crashLoading} onClick={async () => {
+              <>
+              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <h4 style={{ margin: 0, fontSize: "15px" }}>Crash / ANR</h4>
+                  <span className="badge info">需要 root</span>
+                  <div style={{ flex: 1 }} />
+                  {(crash.crashFiles.tombstones.length > 0 || crash.crashFiles.anr.length > 0 || crash.crashFiles.dropbox.length > 0) ? (
+                    <button className="primary-button compact-button" onClick={async () => {
+                      if (!shared.currentDeviceId) return;
+                      const allPaths = [
+                        ...crash.crashFiles.tombstones.map((f: any) => f.path),
+                        ...crash.crashFiles.anr.map((f: any) => f.path),
+                        ...crash.crashFiles.dropbox.map((f: any) => f.path),
+                      ];
+                      try {
+                        const api = (window as any).adbHelperApi?.crash;
+                        if (!api) return;
+                        const result = await api.export({ deviceId: shared.currentDeviceId, filePaths: allPaths });
+                        if (result.status === "ok") {
+                          alert(`导出完成: ${result.exported?.length ?? 0} 成功, ${result.failed?.length ?? 0} 失败\n目录: ${result.outputDir}`);
+                          shared.handleOpenLocalPath(result.outputDir);
+                        } else alert(`导出失败: ${result.message}`);
+                      } catch (error: any) { alert(`出错: ${error.message}`); }
+                    }}><Icon name="export" size={12} /> 导出全部</button>
+                  ) : null}
+                  <button className="ghost-button compact-button" disabled={crash.crashLoading} onClick={async () => {
                     if (!shared.currentDeviceId) return;
                     crash.setCrashLoading(true);
                     crash.setCrashContent(null);
@@ -263,43 +322,32 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                       const data = await api.list({ deviceId: shared.currentDeviceId });
                       if (data.status === "ok") crash.setCrashFiles({ tombstones: data.tombstones ?? [], anr: data.anr ?? [], dropbox: data.dropbox ?? [] });
                       else alert(`获取失败: ${data.message}`);
-                    } catch (error: any) {
-                      alert(`请求出错: ${error.message}`);
-                    }
+                    } catch (error: any) { alert(`请求出错: ${error.message}`); }
                     crash.setCrashLoading(false);
-                  }}>{crash.crashLoading ? "加载中..." : "刷新文件列表"}</button>
+                  }}>{crash.crashLoading ? "加载中..." : <><Icon name="refresh" size={12} /> 刷新</>}</button>
                 </div>
 
-                {crash.crashContent ? (
-                  <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }} onClick={() => crash.setCrashContent(null)}>
-                    <div style={{ width: "85vw", maxHeight: "85vh", background: "#1e1e1e", borderRadius: "8px", display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(event) => event.stopPropagation()}>
-                      <div style={{ display: "flex", alignItems: "center", padding: "10px 16px", background: "#2d2d2d", borderBottom: "1px solid #3e3e3e" }}>
-                        <span style={{ flex: 1, fontSize: "12px", color: "#ccc", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{crash.crashContent.path}</span>
-                        <button className="ghost-button compact-button" style={{ color: "#ccc" }} onClick={() => crash.setCrashContent(null)}>✕</button>
-                      </div>
-                      <pre style={{ flex: 1, margin: 0, padding: "12px 16px", color: "#d4d4d4", fontSize: "11px", overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{crash.crashContent.content}</pre>
-                    </div>
-                  </div>
-                ) : null}
-
                 {(crash.crashFiles.tombstones.length > 0 || crash.crashFiles.anr.length > 0 || crash.crashFiles.dropbox.length > 0) ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {crash.crashFiles.tombstones.length > 0 ? (
-                      <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e74c3c", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
-                          const content = event.currentTarget.nextElementSibling as HTMLElement;
-                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
-                        }}>💀 Tombstones ({crash.crashFiles.tombstones.length}) ▼</h4>
-                        <div style={{ display: "block" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
-                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, tombstones: [...crash.crashFiles.tombstones].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                      <article className="catalog-command-card" style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                          const el = event.currentTarget.parentElement?.querySelector(".crash-group-body") as HTMLElement;
+                          if (el) { el.style.display = el.style.display === "none" ? "" : "none"; event.currentTarget.querySelector(".collapse-arrow")!.textContent = el.style.display === "none" ? "▶" : "▼"; }
+                        }}>
+                          <span className="collapse-arrow" style={{ fontSize: "11px", color: "#e74c3c", marginRight: "6px", width: "14px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={11} /></span>
+                          <strong style={{ fontSize: "13px", color: "#e74c3c" }}><Icon name="tombstone" size={13} style={{ marginRight: "4px" }} />Tombstones</strong>
+                          <span className="badge danger" style={{ marginLeft: "6px" }}>{crash.crashFiles.tombstones.length}</span>
+                        </div>
+                        <div className="crash-group-body" style={{ display: "none", marginTop: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", fontSize: "11px", color: "#999" }}>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "name")} onClick={makeSortHandler("tombstone")("name")}>按名{tombstoneSort.field === "name" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "date")} onClick={makeSortHandler("tombstone")("date")}>按日期{tombstoneSort.field === "date" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "size")} onClick={makeSortHandler("tombstone")("size")}>按大小{tombstoneSort.field === "size" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                             {crash.crashFiles.tombstones.filter((file: any) => !file.name.endsWith(".pb")).map((file: any, index: number) => (
-                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
+                              <div key={index} className="catalog-command-card" style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }} onClick={async () => {
                                 crash.setCrashContentLoading(true);
                                 try {
                                   const api = (window as any).adbHelperApi?.crash;
@@ -307,36 +355,45 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                                   const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
                                   if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
                                   else alert(`读取失败: ${data.message}`);
-                                } catch (error: any) {
-                                  alert(`请求出错: ${error.message}`);
-                                }
+                                } catch (error: any) { alert(`请求出错: ${error.message}`); }
                                 crash.setCrashContentLoading(false);
                               }}>
-                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
+                                <span style={{ flex: 1, fontFamily: "monospace", fontSize: "12px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>{file.name}</span>
+                                <span style={{ color: "#999", fontSize: "10px", whiteSpace: "nowrap" }}>{file.date}</span>
+                                <span style={{ color: "#aaa", fontSize: "10px", whiteSpace: "nowrap" }}>{file.size}B</span>
+                                <button className="ghost-button compact-button" style={{ fontSize: "11px", flexShrink: 0 }} title="导出此文件" onClick={(e) => { e.stopPropagation(); (async () => {
+                                  if (!shared.currentDeviceId) return;
+                                  try {
+                                    const api = (window as any).adbHelperApi?.crash; if (!api) return;
+                                    const r = await api.export({ deviceId: shared.currentDeviceId, filePaths: [file.path] });
+                                    if (r.status === "ok") alert(`已导出: ${r.exported?.[0]?.localPath ?? file.name}`); else alert(r.message);
+                                  } catch {}
+                                })(); }}><Icon name="export" size={11} /></button>
                               </div>
                             ))}
                           </div>
                         </div>
-                      </div>
+                      </article>
                     ) : null}
                     {crash.crashFiles.anr.length > 0 ? (
-                      <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#e67e22", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
-                          const content = event.currentTarget.nextElementSibling as HTMLElement;
-                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
-                        }}>⚠️ ANR ({crash.crashFiles.anr.length}) ▼</h4>
-                        <div style={{ display: "block" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
-                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, anr: [...crash.crashFiles.anr].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                      <article className="catalog-command-card" style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                          const el = event.currentTarget.parentElement?.querySelector(".crash-group-body") as HTMLElement;
+                          if (el) { el.style.display = el.style.display === "none" ? "" : "none"; event.currentTarget.querySelector(".collapse-arrow")!.textContent = el.style.display === "none" ? "▶" : "▼"; }
+                        }}>
+                          <span className="collapse-arrow" style={{ fontSize: "11px", color: "#e67e22", marginRight: "6px", width: "14px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={11} /></span>
+                          <strong style={{ fontSize: "13px", color: "#e67e22" }}><Icon name="warn" size={13} style={{ marginRight: "4px" }} />ANR Traces</strong>
+                          <span className="badge warning" style={{ marginLeft: "6px" }}>{crash.crashFiles.anr.length}</span>
+                        </div>
+                        <div className="crash-group-body" style={{ display: "none", marginTop: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", fontSize: "11px", color: "#999" }}>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "name")} onClick={makeSortHandler("anr")("name")}>按名{anrSort.field === "name" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "date")} onClick={makeSortHandler("anr")("date")}>按日期{anrSort.field === "date" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "size")} onClick={makeSortHandler("anr")("size")}>按大小{anrSort.field === "size" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                             {crash.crashFiles.anr.map((file: any, index: number) => (
-                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
+                              <div key={index} className="catalog-command-card" style={{ padding: "6px 10px", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }} onClick={async () => {
                                 crash.setCrashContentLoading(true);
                                 try {
                                   const api = (window as any).adbHelperApi?.crash;
@@ -344,68 +401,143 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                                   const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
                                   if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
                                   else alert(`读取失败: ${data.message}`);
-                                } catch (error: any) {
-                                  alert(`请求出错: ${error.message}`);
-                                }
+                                } catch (error: any) { alert(`请求出错: ${error.message}`); }
                                 crash.setCrashContentLoading(false);
                               }}>
-                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
+                                <span style={{ flex: 1, fontFamily: "monospace", fontSize: "12px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>{file.name}</span>
+                                <span style={{ color: "#999", fontSize: "10px", whiteSpace: "nowrap" }}>{file.date}</span>
+                                <span style={{ color: "#aaa", fontSize: "10px", whiteSpace: "nowrap" }}>{file.size}B</span>
+                                <button className="ghost-button compact-button" style={{ fontSize: "11px", flexShrink: 0 }} title="导出此文件" onClick={(e) => { e.stopPropagation(); (async () => {
+                                  if (!shared.currentDeviceId) return;
+                                  try {
+                                    const api = (window as any).adbHelperApi?.crash; if (!api) return;
+                                    const r = await api.export({ deviceId: shared.currentDeviceId, filePaths: [file.path] });
+                                    if (r.status === "ok") alert(`已导出: ${r.exported?.[0]?.localPath ?? file.name}`); else alert(r.message);
+                                  } catch {}
+                                })(); }}><Icon name="export" size={11} /></button>
                               </div>
                             ))}
                           </div>
                         </div>
-                      </div>
+                      </article>
                     ) : null}
-                    {crash.crashFiles.dropbox.length > 0 ? (
-                      <div>
-                        <h4 style={{ fontSize: "13px", marginBottom: "8px", color: "#8e44ad", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
-                          const content = event.currentTarget.nextElementSibling as HTMLElement;
-                          if (content) content.style.display = content.style.display === "none" ? "block" : "none";
-                        }}>📦 Dropbox ({crash.crashFiles.dropbox.length}) ▼</h4>
-                        <div style={{ display: "block" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "11px" }}>
-                            <span style={{ width: "120px", color: "#999" }}>排序：</span>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => a.name.localeCompare(b.name)) })}>按名称</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => a.date.localeCompare(b.date)) })}>按日期</button>
-                            <button className="ghost-button compact-button" onClick={() => crash.setCrashFiles({ ...crash.crashFiles, dropbox: [...crash.crashFiles.dropbox].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size)) })}>按大小</button>
+                    {crash.crashFiles.dropbox.length > 0 ? (() => {
+                      const groups: Record<string, typeof crash.crashFiles.dropbox> = {};
+                      for (const f of crash.crashFiles.dropbox) {
+                        const tag = f.groupTag ?? f.name.split("@")[0];
+                        if (!groups[tag]) groups[tag] = [];
+                        groups[tag].push(f);
+                      }
+                      const groupTags = Object.keys(groups).sort();
+                      const total = crash.crashFiles.dropbox.length;
+                      const tagColors: Record<string, string> = { system_app_anr: "#e74c3c", system_app_crash: "#e67e22", system_server_lowmem: "#9b59b6", system_server_crash: "#c0392b", system_server_wtf: "#e91e63", data_app_crash: "#3498db", data_app_anr: "#f39c12" };
+                      return (
+                        <article className="catalog-command-card" style={{ padding: "12px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                            const container = event.currentTarget.parentElement;
+                            if (!container) return;
+                            const subGroups = container.querySelectorAll(".dropbox-sub-group");
+                            const arrowEl = container.querySelector(".dropbox-arrow");
+                            const firstHidden = (subGroups[0] as HTMLElement)?.style.display === "none";
+                            subGroups.forEach((g: Element) => { (g as HTMLElement).style.display = firstHidden ? "" : "none"; });
+                            if (arrowEl) { arrowEl.setAttribute("data-expanded", firstHidden ? "true" : "false"); }
+                          }}>
+                            <span className="dropbox-arrow" data-expanded="false" style={{ fontSize: "11px", color: "#8e44ad", marginRight: "6px", width: "14px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={11} /></span>
+                            <strong style={{ fontSize: "13px", color: "#8e44ad" }}><Icon name="table" size={13} style={{ marginRight: "4px" }} />Dropbox</strong>
+                            <span className="badge info" style={{ marginLeft: "6px" }}>{total}</span>
+                            <span style={{ fontSize: "11px", color: "#aaa", marginLeft: "4px" }}>{groupTags.length} 类</span>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            {crash.crashFiles.dropbox.map((file: any, index: number) => (
-                              <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "#f8f8f8", borderRadius: "4px", fontSize: "12px", cursor: "pointer" }} onClick={async () => {
-                                crash.setCrashContentLoading(true);
-                                try {
-                                  const api = (window as any).adbHelperApi?.crash;
-                                  if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
-                                  const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
-                                  if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
-                                  else alert(`读取失败: ${data.message}`);
-                                } catch (error: any) {
-                                  alert(`请求出错: ${error.message}`);
-                                }
-                                crash.setCrashContentLoading(false);
-                              }}>
-                                <span style={{ flex: 1, fontFamily: "monospace" }}>{file.name}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.date}</span>
-                                <span style={{ color: "#999", fontSize: "11px" }}>{file.size}B</span>
-                              </div>
-                            ))}
+                          <div className="dropbox-groups-container" style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                            {groupTags.map((tag) => {
+                              const items = groups[tag];
+                              const tagColor = tagColors[tag] ?? "#888";
+                              return (
+                                <div key={tag} className="dropbox-sub-group" style={{ paddingLeft: "10px", borderLeft: `3px solid ${tagColor}40`, display: "none" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
+                                    const body = (event.currentTarget.parentElement?.querySelector(".dropbox-group-body") as HTMLElement);
+                                    const arrowEl = event.currentTarget.querySelector(".dropbox-sub-arrow");
+                                    if (body && arrowEl) { const willShow = body.style.display === "none"; body.style.display = willShow ? "" : "none"; arrowEl.setAttribute("data-expanded", willShow ? "true" : "false"); }
+                                  }}>
+                                    <span className="dropbox-sub-arrow" data-expanded="false" style={{ fontSize: "10px", color: tagColor, width: "12px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={10} /></span>
+                                    <strong style={{ fontSize: "12px", color: tagColor }}>{tag}</strong>
+                                    <span style={{ fontSize: "10px", color: "#aaa" }}>({items.length})</span>
+                                    <div style={{ flex: 1 }} />
+                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "name")} onClick={(e) => { e.stopPropagation(); makeSortHandler("dropbox")("name"); }}>按名{dropboxSort.field === "name" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
+                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "date")} onClick={(e) => { e.stopPropagation(); makeSortHandler("dropbox")("date"); }}>按日期{dropboxSort.field === "date" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
+                                    <button className="ghost-button compact-button" style={{ fontSize: "9px" }} title={`导出 ${tag} 全部`} onClick={(e) => { e.stopPropagation(); (async () => {
+                                      if (!shared.currentDeviceId) return;
+                                      try {
+                                        const api = (window as any).adbHelperApi?.crash; if (!api) return;
+                                        const paths = items.map((f: any) => f.path);
+                                        const r = await api.export({ deviceId: shared.currentDeviceId, filePaths: paths });
+                                        if (r.status === "ok") { alert(`${tag}: 导出 ${r.exported?.length ?? 0} 个`); shared.handleOpenLocalPath(r.outputDir); } else alert(r.message);
+                                      } catch {}
+                                    })(); }}><Icon name="download" size={12} /></button>
+                                  </div>
+                                  <div className="dropbox-group-body" style={{ display: "none", marginTop: "4px" }}>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                      {items.map((file: any, idx: number) => {
+                                        const isCompressed = file.name.endsWith(".pb") || file.name.endsWith(".gz") || file.name.endsWith(".zip") || ["system_server_lowmem", "strict_mode"].some(t => tag.includes(t));
+                                        return (
+                                          <div key={idx} className="catalog-command-card" style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", opacity: isCompressed ? 0.75 : 1 }} onClick={async () => {
+                                            if (isCompressed) { alert("该文件为压缩/二进制格式（如 protobuf），不支持文本查看。\n可通过右侧导出按钮导出后用专用工具打开。"); return; }
+                                            crash.setCrashContentLoading(true);
+                                            try {
+                                              const api = (window as any).adbHelperApi?.crash;
+                                              if (!api) { alert("IPC 接口不可用"); crash.setCrashContentLoading(false); return; }
+                                              const data = await api.read({ deviceId: shared.currentDeviceId, filePath: file.path });
+                                              if (data.status === "ok") crash.setCrashContent({ path: file.path, content: data.content });
+                                              else alert(`读取失败: ${data.message}`);
+                                            } catch (error: any) { alert(`请求出错: ${error.message}`); }
+                                            crash.setCrashContentLoading(false);
+                                          }}>
+                                            <span style={{ flex: 1, fontFamily: "monospace", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>{file.name}{isCompressed ? <Icon name="warn-2" size={10} style={{ marginLeft: "4px" }} /> : ""}</span>
+                                            <span style={{ color: "#999", fontSize: "9px", whiteSpace: "nowrap" }}>{file.date}</span>
+                                            <span style={{ color: "#aaa", fontSize: "9px", whiteSpace: "nowrap" }}>{file.size}B</span>
+                                            <button className="ghost-button compact-button" style={{ fontSize: "10px", flexShrink: 0 }} title="导出此文件" onClick={(e) => { e.stopPropagation(); (async () => {
+                                              if (!shared.currentDeviceId) return;
+                                              try {
+                                                const api = (window as any).adbHelperApi?.crash; if (!api) return;
+                                                const r = await api.export({ deviceId: shared.currentDeviceId, filePaths: [file.path] });
+                                                if (r.status === "ok") alert(`已导出: ${r.exported?.[0]?.localPath ?? file.name}`); else alert(r.message);
+                                              } catch {}
+                                            })(); }}><Icon name="download" size={10} /></button>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
-                      </div>
-                    ) : null}
+                        </article>
+                      );
+                    })() : null}
                   </div>
-                ) : (!crash.crashLoading ? <div className="result-empty-state">点击"刷新文件列表"获取设备上的 Crash/ANR 文件。</div> : null)}
+                ) : (!crash.crashLoading ? <div className="result-empty-state">点击「刷新」获取设备上的 Crash / ANR 文件。</div> : null)}
               </section>
+              {crash.crashContent ? (
+                <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }} onClick={() => crash.setCrashContent(null)}>
+                  <div style={{ width: "85vw", maxHeight: "85vh", background: "#1e1e1e", borderRadius: "12px", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 16px 60px rgba(0,0,0,0.4)" }} onClick={(event) => event.stopPropagation()}>
+                    <div style={{ display: "flex", alignItems: "center", padding: "10px 16px", background: "#2d2d2d", borderBottom: "1px solid #3e3e3e" }}>
+                      <span style={{ flex: 1, fontSize: "12px", color: "#ccc", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{crash.crashContent.path}</span>
+                      <button className="ghost-button compact-button" style={{ color: "#ccc" }} onClick={() => crash.setCrashContent(null)}>✕ 关闭</button>
+                    </div>
+                    <pre style={{ flex: 1, margin: 0, padding: "12px 16px", color: "#d4d4d4", fontSize: "11px", overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.5 }}>{crash.crashContent.content}</pre>
+                  </div>
+                </div>
+              ) : null}
+              </>
             ) : null}
 
             {logcat.logcatPageTab === "bugreport" ? (
-              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "12px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                  <h4 style={{ margin: 0 }}>Bugreport</h4>
-                  <span style={{ fontSize: "11px", color: "#999" }}>抓取完整 bugreport zip</span>
-                  <button className="primary-button" style={{ marginLeft: "auto" }} disabled={bugreport.bugreportRunning} onClick={async () => {
+              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <h4 style={{ margin: 0, fontSize: "15px" }}>Bugreport</h4>
+                  <span className="badge info">完整 bugreport zip</span>
+                  <div style={{ flex: 1 }} />
+                  <button className="primary-button compact-button" disabled={bugreport.bugreportRunning} onClick={async () => {
                     if (!shared.currentDeviceId) return;
                     bugreport.setBugreportRunning(true);
                     bugreport.setBugreportResult(null);
@@ -413,72 +545,95 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                       const api = (window as any).adbHelperApi?.bugreport;
                       if (!api) { alert("IPC 接口不可用"); bugreport.setBugreportRunning(false); return; }
                       const data = await api.fetch({ deviceId: shared.currentDeviceId });
-                      if (data.status === "ok") bugreport.setBugreportResult(data.file ?? "完成");
+                      if (data.status === "ok") { bugreport.setBugreportResult(data.file ?? "完成"); bugreport.loadBugreportFiles(); }
                       else alert(`失败: ${data.message}`);
-                    } catch (error: any) {
-                      alert(`请求出错: ${error.message}`);
-                    }
+                    } catch (error: any) { alert(`请求出错: ${error.message}`); }
                     bugreport.setBugreportRunning(false);
-                  }}>{bugreport.bugreportRunning ? "抓取中（可能需要几分钟）..." : "开始抓取"}</button>
+                  }}>{bugreport.bugreportRunning ? "抓取中（可能需要几分钟）..." : <><Icon name="start" size={14} /> 开始抓取</>}</button>
                 </div>
                 {bugreport.bugreportResult ? (
-                  <div style={{ padding: "12px", background: "#f0f9f0", borderRadius: "6px", fontSize: "12px", display: "flex", alignItems: "center", gap: "12px" }}>
-                    <span>✅ 已保存至：<span style={{ fontFamily: "monospace" }}>{bugreport.bugreportResult}</span></span>
-                    <button className="ghost-button" onClick={() => shared.handleOpenLocalPath(bugreport.bugreportResult.replace(/\/[^/]+$/, ""))}>📂 打开目录</button>
+                  <article className="catalog-command-card" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px", background: "linear-gradient(135deg, rgba(232,246,255,0.95), rgba(243,252,255,0.92))", borderColor: "rgba(29,134,217,0.34)" }}>
+                    <span className="badge success"><Icon name="start" size={12} style={{ marginRight: "4px" }} />已保存</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "12px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{bugreport.bugreportResult}</span>
+                    <button className="ghost-button compact-button" onClick={() => shared.handleOpenLocalPath(bugreport.bugreportResult)}><Icon name="folder" size={12} /> 打开目录</button>
+                  </article>
+                ) : null}
+                {!bugreport.bugreportRunning && !bugreport.bugreportResult ? (
+                  <div className="result-empty-state">点击「开始抓取」生成设备 bugreport。输出保存到 ~/Documents/adb-helper-bugreport/</div>
+                ) : null}
+                {bugreport.bugreportFiles.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#555" }}><Icon name="table" size={12} style={{ marginRight: "4px" }} />历史文件</span>
+                      <span className="badge info">{bugreport.bugreportFiles.length}</span>
+                      <div style={{ flex: 1 }} />
+                      <button className="ghost-button compact-button" onClick={() => bugreport.loadBugreportFiles()}><Icon name="refresh" size={12} /> 刷新</button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "300px", overflowY: "auto" }}>
+                      {bugreport.bugreportFiles.map((file: { name: string; path: string; size: number; mtime: number }) => (
+                        <article key={file.path} className={`catalog-command-card ${file.path === bugreport.bugreportResult ? "active" : ""}`} style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }} onClick={() => shared.handleOpenLocalPath(file.path)}>
+                          <span style={{ fontFamily: "monospace", fontSize: "12px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>{file.name}</span>
+                          <span style={{ color: "#888", whiteSpace: "nowrap", fontSize: "11px" }}>{(file.size / 1024 / 1024).toFixed(1)} MB</span>
+                          <span style={{ color: "#aaa", whiteSpace: "nowrap", fontSize: "11px" }}>{new Date(file.mtime).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <button className="ghost-button compact-button" style={{ flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); shared.handleOpenLocalPath(file.path); }}><Icon name="folder" size={12} /></button>
+                        </article>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
-                {!bugreport.bugreportRunning && !bugreport.bugreportResult ? <div className="result-empty-state">点击"开始抓取"生成设备 bugreport。输出保存到 ~/Documents/adb-helper-bugreport/</div> : null}
               </section>
             ) : null}
 
             {logcat.logcatPageTab === "trace" ? (
-              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "12px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                  <h4 style={{ margin: 0 }}>Trace 抓取</h4>
-                  <span style={{ fontSize: "11px", color: "#999" }}>atrace 系统追踪</span>
+              <section className="panel page-panel" style={{ flex: 1, overflow: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <h4 style={{ margin: 0, fontSize: "15px" }}>Trace 抓取</h4>
+                  <span className="badge info">atrace 系统追踪</span>
                 </div>
-                <div className="logcat-capture-actions" style={{ marginBottom: "12px" }}>
-                  <label className="param-toggle-row" style={{ gap: "6px" }}>
-                    <span>时长(秒)：</span>
-                    <input type="number" min="1" max="30" value={trace.traceDuration} onChange={(event) => trace.setTraceDuration(event.target.value)} style={{ width: "50px", padding: "4px 8px", borderRadius: "4px", border: "1px solid #ddd", fontSize: "12px" }} />
-                  </label>
-                  <div className="chip-row" style={{ flex: 1 }}>
-                    {["gfx", "view", "wm", "am", "sched", "freq", "idle", "disk", "input", "res"].map((category) => (
-                      <button key={category} className={`chip ${trace.traceCategories.includes(category) ? "active" : ""}`} onClick={() => trace.setTraceCategories((prev: string[]) => prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category])}>{category}</button>
-                    ))}
+                <article className="catalog-command-card" style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", flexWrap: "nowrap" }}>
+                    <label className="param-toggle-row" style={{ gap: "6px", flexShrink: 0 }}>
+                      <span style={{ fontSize: "12px", color: "#666" }}>时长(秒)：</span>
+                      <input type="number" min="1" max="30" value={trace.traceDuration} onChange={(event) => trace.setTraceDuration(event.target.value)} style={{ width: "50px", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--border-default)", fontSize: "12px" }} />
+                    </label>
+                    <div className="chip-row" style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                      {["gfx", "view", "wm", "am", "sched", "freq", "idle", "disk", "input", "res"].map((category) => (
+                        <button key={category} className={`chip ${trace.traceCategories.includes(category) ? "active" : ""}`} onClick={() => trace.setTraceCategories((prev: string[]) => prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category])}>{category}</button>
+                      ))}
+                    </div>
+                    <button className="primary-button compact-button" style={{ flexShrink: 0 }} disabled={trace.traceRunning || trace.traceCategories.length === 0} onClick={async () => {
+                      if (!shared.currentDeviceId) return;
+                      trace.setTraceRunning(true);
+                      trace.setTraceResult(null);
+                      try {
+                        const api = (window as any).adbHelperApi?.trace;
+                        if (!api) { alert("IPC 接口不可用"); trace.setTraceRunning(false); return; }
+                        const data = await api.start({ deviceId: shared.currentDeviceId, duration: Number(trace.traceDuration), categories: trace.traceCategories });
+                        if (data.status === "ok") { trace.setTraceResult(data.file); trace.loadTraceFiles(); }
+                        else alert(`失败: ${data.message}`);
+                      } catch (error: any) { alert(`请求出错: ${error.message}`); }
+                      trace.setTraceRunning(false);
+                    }}>{trace.traceRunning ? `抓取中（${trace.traceDuration}秒）...` : <><Icon name="start" size={14} /> 开始抓取</>}</button>
                   </div>
-                  <button className="primary-button" disabled={trace.traceRunning || trace.traceCategories.length === 0} onClick={async () => {
-                    if (!shared.currentDeviceId) return;
-                    trace.setTraceRunning(true);
-                    trace.setTraceResult(null);
-                    try {
-                      const api = (window as any).adbHelperApi?.trace;
-                      if (!api) { alert("IPC 接口不可用"); trace.setTraceRunning(false); return; }
-                      const data = await api.start({ deviceId: shared.currentDeviceId, duration: Number(trace.traceDuration), categories: trace.traceCategories });
-                      if (data.status === "ok") trace.setTraceResult(data.file);
-                      else alert(`失败: ${data.message}`);
-                    } catch (error: any) {
-                      alert(`请求出错: ${error.message}`);
-                    }
-                    trace.setTraceRunning(false);
-                  }}>{trace.traceRunning ? `抓取中（${trace.traceDuration}秒）...` : "开始抓取"}</button>
-                </div>
+                </article>
                 {trace.traceResult ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ padding: "12px", background: "#f0f9f0", borderRadius: "6px", fontSize: "12px", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                      <span>✅ 已保存至：<span style={{ fontFamily: "monospace" }}>{trace.traceResult}</span></span>
-                      <button className="ghost-button" onClick={() => shared.handleOpenLocalPath(trace.traceResult.replace(/\/[^/]+$/, ""))}>📂 打开目录</button>
-                      <button className="ghost-button" onClick={async () => {
-                        try {
-                          const api = (window as any).adbHelperApi?.trace;
-                          if (!api) { alert("IPC 接口不可用"); return; }
+                  <article className="catalog-command-card" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", background: "linear-gradient(135deg, rgba(232,246,255,0.95), rgba(243,252,255,0.92))", borderColor: "rgba(29,134,217,0.34)" }}>
+                    <span className="badge success"><Icon name="start" size={12} style={{ marginRight: "4px" }} />已保存</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "12px", flex: 1, minWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{trace.traceResult}</span>
+                    <button className="ghost-button compact-button" onClick={() => shared.handleOpenLocalPath(trace.traceResult)}><Icon name="folder" size={12} /> 目录</button>
+                    <button className="ghost-button compact-button" onClick={async () => {
+                      try {
+                        const api = (window as any).adbHelperApi?.trace;
+                        if (!api) { alert("IPC 接口不可用"); return; }
+                        if (api.openInPerfetto) {
+                          const result = await api.openInPerfetto({ path: trace.traceResult });
+                          if (result.status !== "ok") { alert(`打开 Perfetto UI 失败: ${result.message}`); return; }
+                        } else {
                           const result = await api.readFile({ path: trace.traceResult });
                           if (result.status !== "ok") { alert(`读取文件失败: ${result.message}`); return; }
                           const binaryString = atob(result.data);
                           const bytes = new Uint8Array(binaryString.length);
-                          for (let i = 0; i < binaryString.length; i++) {
-                            bytes[i] = binaryString.charCodeAt(i);
-                          }
+                          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
                           const buf = bytes.buffer;
                           const win = window.open("https://ui.perfetto.dev");
                           if (!win) { alert("弹窗被拦截，请允许弹窗"); return; }
@@ -492,18 +647,43 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                             }
                           };
                           window.addEventListener("message", handler);
-                          setTimeout(() => {
-                            clearInterval(timer);
-                            window.removeEventListener("message", handler);
-                          }, 30000);
-                        } catch (error: any) {
-                          alert(`请求出错: ${error.message}`);
+                          setTimeout(() => { clearInterval(timer); window.removeEventListener("message", handler); }, 30000);
                         }
-                      }}>🔍 在 Perfetto UI 中查看</button>
+                      } catch (error: any) { alert(`请求出错: ${error.message}`); }
+                    }}><Icon name="table" size={12} /> Perfetto</button>
+                  </article>
+                ) : null}
+                {!trace.traceRunning && !trace.traceResult ? (
+                  <div className="result-empty-state">选择分类和时长后点击「开始抓取」。输出保存到 ~/Documents/adb-helper-trace/</div>
+                ) : null}
+                {trace.traceFiles.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#555" }}><Icon name="table" size={12} style={{ marginRight: "4px" }} />历史文件</span>
+                      <span className="badge info">{trace.traceFiles.length}</span>
+                      <div style={{ flex: 1 }} />
+                      <button className="ghost-button compact-button" onClick={() => trace.loadTraceFiles()}><Icon name="refresh" size={12} /> 刷新</button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "300px", overflowY: "auto" }}>
+                      {trace.traceFiles.map((file: { name: string; path: string; size: number; mtime: number }) => (
+                        <article key={file.path} className={`catalog-command-card ${file.path === trace.traceResult ? "active" : ""}`} style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{ fontFamily: "monospace", fontSize: "12px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={file.name}>{file.name}</span>
+                          <span style={{ color: "#888", whiteSpace: "nowrap", fontSize: "11px" }}>{(file.size / 1024 / 1024).toFixed(1)} MB</span>
+                          <span style={{ color: "#aaa", whiteSpace: "nowrap", fontSize: "11px" }}>{new Date(file.mtime).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <button className="ghost-button compact-button" title="打开目录" onClick={() => shared.handleOpenLocalPath(file.path)}><Icon name="folder" size={12} /></button>
+                          <button className="ghost-button compact-button" title="在 Perfetto 中查看" onClick={async () => {
+                            try {
+                              const api = (window as any).adbHelperApi?.trace;
+                              if (!api?.openInPerfetto) return;
+                              const result = await api.openInPerfetto({ path: file.path });
+                              if (result.status !== "ok") alert(`打开 Perfetto UI 失败: ${result.message}`);
+                            } catch (error: any) { alert(`请求出错: ${error.message}`); }
+                          }}><Icon name="table" size={12} /></button>
+                        </article>
+                      ))}
                     </div>
                   </div>
                 ) : null}
-                {!trace.traceRunning && !trace.traceResult ? <div className="result-empty-state">选择分类和时长后点击"开始抓取"。输出保存到 ~/Documents/adb-helper-trace/</div> : null}
               </section>
             ) : null}
           </div>

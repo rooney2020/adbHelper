@@ -1,5 +1,5 @@
 import Icon from "../components/Icon";
-import { useState, useCallback } from "react";
+import { useState, useRef } from "react";
 
 interface SortState { field: string; asc: boolean; }
 
@@ -8,28 +8,43 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
   const [tombstoneSort, setTombstoneSort] = useState<SortState>({ field: "", asc: true });
   const [anrSort, setAnrSort] = useState<SortState>({ field: "", asc: true });
   const [dropboxSort, setDropboxSort] = useState<SortState>({ field: "", asc: true });
+  const [dropboxExpanded, setDropboxExpanded] = useState(false);
+  const [expandedSubTags, setExpandedSubTags] = useState<Set<string>>(new Set());
+  const sortRefs = useRef({ tombstone: tombstoneSort, anr: anrSort, dropbox: dropboxSort });
 
-  const makeSortHandler = useCallback((category: "tombstone" | "anr" | "dropbox") => (field: string) => {
-    const setter = category === "tombstone" ? setTombstoneSort : category === "anr" ? setAnrSort : setDropboxSort;
-    return () => {
-      setter((prev: SortState) => {
-        const asc = prev.field === field ? !prev.asc : true;
-        return { field, asc };
-      });
-      const files = crash.crashFiles[category === "tombstone" ? "tombstones" : category === "anr" ? "anr" : "dropbox"];
-      let sorted: any[];
-      if (field === "name") sorted = [...files].sort((a: any, b: any) => a.name.localeCompare(b.name));
-      else if (field === "date") sorted = [...files].sort((a: any, b: any) => a.date.localeCompare(b.date));
-      else if (field === "size") sorted = [...files].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size));
-      else return;
-      const current = category === "tombstone" ? tombstoneSort : category === "anr" ? anrSort : dropboxSort;
-      const isAsc = current.field === field ? !current.asc : true;
-      if (!isAsc) sorted.reverse();
-      if (category === "tombstone") crash.setCrashFiles({ ...crash.crashFiles, tombstones: sorted });
-      else if (category === "anr") crash.setCrashFiles({ ...crash.crashFiles, anr: sorted });
-      else crash.setCrashFiles({ ...crash.crashFiles, dropbox: sorted });
-    };
-  }, [crash.crashFiles, tombstoneSort, anrSort, dropboxSort]);
+  sortRefs.current = { tombstone: tombstoneSort, anr: anrSort, dropbox: dropboxSort };
+
+  const handleSort = (category: "tombstone" | "anr" | "dropbox", field: string) => {
+    const current = sortRefs.current[category];
+    const isAsc = current.field === field ? !current.asc : true;
+    const newState: SortState = { field, asc: isAsc };
+    if (category === "tombstone") setTombstoneSort(newState);
+    else if (category === "anr") setAnrSort(newState);
+    else setDropboxSort(newState);
+    const files = crash.crashFiles[category === "tombstone" ? "tombstones" : category === "anr" ? "anr" : "dropbox"];
+    let sorted: any[];
+    if (field === "name") sorted = [...files].sort((a: any, b: any) => a.name.localeCompare(b.name));
+    else if (field === "date") sorted = [...files].sort((a: any, b: any) => a.date.localeCompare(b.date));
+    else if (field === "size") sorted = [...files].sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size));
+    else return;
+    if (!isAsc) sorted.reverse();
+    if (category === "tombstone") crash.setCrashFiles({ ...crash.crashFiles, tombstones: sorted });
+    else if (category === "anr") crash.setCrashFiles({ ...crash.crashFiles, anr: sorted });
+    else crash.setCrashFiles({ ...crash.crashFiles, dropbox: sorted });
+  };
+
+  const toggleDropbox = () => {
+    setDropboxExpanded(prev => !prev);
+    if (!dropboxExpanded) setExpandedSubTags(new Set());
+  };
+
+  const toggleSubTag = (tag: string) => {
+    setExpandedSubTags(prev => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  };
 
   const sortBtnStyle = (active: boolean): React.CSSProperties => ({
     fontSize: "9px", padding: "1px 6px",
@@ -341,9 +356,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                         </div>
                         <div className="crash-group-body" style={{ display: "none", marginTop: "8px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", fontSize: "11px", color: "#999" }}>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "name")} onClick={makeSortHandler("tombstone")("name")}>按名{tombstoneSort.field === "name" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "date")} onClick={makeSortHandler("tombstone")("date")}>按日期{tombstoneSort.field === "date" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "size")} onClick={makeSortHandler("tombstone")("size")}>按大小{tombstoneSort.field === "size" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "name")} onClick={() => handleSort("tombstone", "name")}>按名{tombstoneSort.field === "name" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "date")} onClick={() => handleSort("tombstone", "date")}>按日期{tombstoneSort.field === "date" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(tombstoneSort.field === "size")} onClick={() => handleSort("tombstone", "size")}>按大小{tombstoneSort.field === "size" ? (tombstoneSort.asc ? "↑" : "↓") : ""}</button>
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                             {crash.crashFiles.tombstones.filter((file: any) => !file.name.endsWith(".pb")).map((file: any, index: number) => (
@@ -387,9 +402,9 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                         </div>
                         <div className="crash-group-body" style={{ display: "none", marginTop: "8px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", fontSize: "11px", color: "#999" }}>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "name")} onClick={makeSortHandler("anr")("name")}>按名{anrSort.field === "name" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "date")} onClick={makeSortHandler("anr")("date")}>按日期{anrSort.field === "date" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
-                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "size")} onClick={makeSortHandler("anr")("size")}>按大小{anrSort.field === "size" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "name")} onClick={() => handleSort("anr", "name")}>按名{anrSort.field === "name" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "date")} onClick={() => handleSort("anr", "date")}>按日期{anrSort.field === "date" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
+                            <button className="ghost-button compact-button" style={sortBtnStyle(anrSort.field === "size")} onClick={() => handleSort("anr", "size")}>按大小{anrSort.field === "size" ? (anrSort.asc ? "↑" : "↓") : ""}</button>
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                             {crash.crashFiles.anr.map((file: any, index: number) => (
@@ -433,37 +448,26 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                       const tagColors: Record<string, string> = { system_app_anr: "#e74c3c", system_app_crash: "#e67e22", system_server_lowmem: "#9b59b6", system_server_crash: "#c0392b", system_server_wtf: "#e91e63", data_app_crash: "#3498db", data_app_anr: "#f39c12" };
                       return (
                         <article className="catalog-command-card" style={{ padding: "12px 14px" }}>
-                          <div style={{ display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
-                            const container = event.currentTarget.parentElement;
-                            if (!container) return;
-                            const subGroups = container.querySelectorAll(".dropbox-sub-group");
-                            const arrowEl = container.querySelector(".dropbox-arrow");
-                            const firstHidden = (subGroups[0] as HTMLElement)?.style.display === "none";
-                            subGroups.forEach((g: Element) => { (g as HTMLElement).style.display = firstHidden ? "" : "none"; });
-                            if (arrowEl) { arrowEl.setAttribute("data-expanded", firstHidden ? "true" : "false"); }
-                          }}>
-                            <span className="dropbox-arrow" data-expanded="false" style={{ fontSize: "11px", color: "#8e44ad", marginRight: "6px", width: "14px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={11} /></span>
+                          <div style={{ display: "flex", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={toggleDropbox}>
+                            <span className="dropbox-arrow" style={{ fontSize: "11px", color: "#8e44ad", marginRight: "6px", width: "14px", display: "inline-flex", alignItems: "center" }}><Icon name={dropboxExpanded ? "collapse-list" : "expand-list"} size={11} /></span>
                             <strong style={{ fontSize: "13px", color: "#8e44ad" }}><Icon name="table" size={13} style={{ marginRight: "4px" }} />Dropbox</strong>
                             <span className="badge info" style={{ marginLeft: "6px" }}>{total}</span>
                             <span style={{ fontSize: "11px", color: "#aaa", marginLeft: "4px" }}>{groupTags.length} 类</span>
                           </div>
-                          <div className="dropbox-groups-container" style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <div className="dropbox-groups-container" style={{ marginTop: dropboxExpanded ? "8px" : "0", display: dropboxExpanded ? "flex" : "none", flexDirection: "column", gap: "8px" }}>
                             {groupTags.map((tag) => {
                               const items = groups[tag];
                               const tagColor = tagColors[tag] ?? "#888";
+                              const isSubExpanded = expandedSubTags.has(tag);
                               return (
-                                <div key={tag} className="dropbox-sub-group" style={{ paddingLeft: "10px", borderLeft: `3px solid ${tagColor}40`, display: "none" }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }} onClick={(event) => {
-                                    const body = (event.currentTarget.parentElement?.querySelector(".dropbox-group-body") as HTMLElement);
-                                    const arrowEl = event.currentTarget.querySelector(".dropbox-sub-arrow");
-                                    if (body && arrowEl) { const willShow = body.style.display === "none"; body.style.display = willShow ? "" : "none"; arrowEl.setAttribute("data-expanded", willShow ? "true" : "false"); }
-                                  }}>
-                                    <span className="dropbox-sub-arrow" data-expanded="false" style={{ fontSize: "10px", color: tagColor, width: "12px", display: "inline-flex", alignItems: "center" }}><Icon name="expand-list" size={10} /></span>
+                                <div key={tag} className="dropbox-sub-group" style={{ paddingLeft: "10px", borderLeft: `3px solid ${tagColor}40` }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", userSelect: "none" }} onClick={() => toggleSubTag(tag)}>
+                                    <span className="dropbox-sub-arrow" style={{ fontSize: "10px", color: tagColor, width: "12px", display: "inline-flex", alignItems: "center" }}><Icon name={isSubExpanded ? "collapse-list" : "expand-list"} size={10} /></span>
                                     <strong style={{ fontSize: "12px", color: tagColor }}>{tag}</strong>
                                     <span style={{ fontSize: "10px", color: "#aaa" }}>({items.length})</span>
                                     <div style={{ flex: 1 }} />
-                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "name")} onClick={(e) => { e.stopPropagation(); makeSortHandler("dropbox")("name"); }}>按名{dropboxSort.field === "name" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
-                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "date")} onClick={(e) => { e.stopPropagation(); makeSortHandler("dropbox")("date"); }}>按日期{dropboxSort.field === "date" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
+                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "name")} onClick={(e) => { e.stopPropagation(); handleSort("dropbox")("name"); }}>按名{dropboxSort.field === "name" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
+                                    <button className="ghost-button compact-button" style={sortBtnStyle(dropboxSort.field === "date")} onClick={(e) => { e.stopPropagation(); handleSort("dropbox")("date"); }}>按日期{dropboxSort.field === "date" ? (dropboxSort.asc ? "↑" : "↓") : ""}</button>
                                     <button className="ghost-button compact-button" style={{ fontSize: "9px" }} title={`导出 ${tag} 全部`} onClick={(e) => { e.stopPropagation(); (async () => {
                                       if (!shared.currentDeviceId) return;
                                       try {
@@ -474,7 +478,7 @@ export default function LogcatPage({ logcat, crash, bugreport, trace, shared }: 
                                       } catch {}
                                     })(); }}><Icon name="download" size={12} /></button>
                                   </div>
-                                  <div className="dropbox-group-body" style={{ display: "none", marginTop: "4px" }}>
+                                  <div className="dropbox-group-body" style={{ display: isSubExpanded ? "block" : "none", marginTop: "4px" }}>
                                     <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                                       {items.map((file: any, idx: number) => {
                                         const isCompressed = file.name.endsWith(".pb") || file.name.endsWith(".gz") || file.name.endsWith(".zip") || ["system_server_lowmem", "strict_mode"].some(t => tag.includes(t));

@@ -1295,7 +1295,9 @@ h3 {
 }
 
 .workspace-grid-right-maximized .left-panel,
-.workspace-grid-right-maximized .middle-panel {
+.workspace-grid-right-maximized .middle-panel,
+.workspace-grid-right-maximized .cmdlist-panel,
+.workspace-grid-right-maximized .param-editor-panel {
   display: none;
 }
 
@@ -1363,6 +1365,379 @@ h3 {
   justify-content: flex-start;
 }
 
+/* ── New 3-panel layout ── */
+
+.cmdlist-panel {
+  grid-column: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.param-editor-panel {
+  grid-column: 3 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.resize-handle-first {
+  grid-column: 2 / 3;
+}
+
+.resize-handle-second {
+  grid-column: 4 / 5;
+}
+
+/* ── Cmdlist panel header (dropdown + icons) ── */
+
+.cmdlist-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cmdlist-panel-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.cmdlist-panel-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.cmdlist-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.cmdlist-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: color 0.15s, background 0.15s;
+}
+
+.cmdlist-icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.cmdlist-subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.cmdlist-subhead h3 {
+  margin: 0;
+}
+
+/* ── Param editor ── */
+
+.param-editor-head {
+  flex-shrink: 0;
+}
+
+.param-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.param-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.param-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-field-row-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.param-toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.param-toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent, #1677ff);
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.param-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.param-required {
+  color: var(--danger);
+  margin-left: 2px;
+}
+
+.param-field-input,
+.param-field-select {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.param-field-input {
+  font-family: var(--font-mono, monospace);
+}
+
+.param-field-select {
+  cursor: pointer;
+  appearance: auto;
+  -moz-appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.param-field-input:focus,
+.param-field-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.param-editor-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Dumpsys page ── */
+
+/* Sidebar */
+
+.dumpsys-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.dumpsys-sidebar-search {
+  flex-shrink: 0;
+}
+
+.dumpsys-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dumpsys-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  box-sizing: border-box;
+  min-width: 0;
+  transition: background .12s, border-color .12s;
+}
+
+.dumpsys-sidebar-item:hover {
+  background: linear-gradient(135deg, rgba(232, 246, 255, 0.92), rgba(243, 252, 255, 0.88));
+  border-color: rgba(29, 134, 217, 0.2);
+}
+
+.dumpsys-sidebar-item.active {
+  background: linear-gradient(135deg, rgba(232, 246, 255, 0.95), rgba(243, 252, 255, 0.92));
+  border-color: rgba(29, 134, 217, 0.34);
+}
+
+.dumpsys-sidebar-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dumpsys-sidebar-item-param {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.dumpsys-sidebar-item.active .dumpsys-sidebar-item-param {
+  opacity: 1;
+}
+
+/* Resize handle */
+
+.dumpsys-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+  touch-action: none;
+  margin: 0 5px;
+  border-radius: 3px;
+}
+
+.dumpsys-resize-handle:hover {
+  background: rgba(29, 134, 217, 0.08);
+}
+
+.dumpsys-resize-handle:active {
+  background: rgba(29, 134, 217, 0.15);
+}
+
+/* Param section */
+
+.dumpsys-param-section {
+  background: var(--bg-surface-soft);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.dumpsys-param-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.dumpsys-param-head .section-kicker {
+  margin: 0;
+}
+
+.dumpsys-module-tag {
+  display: inline-block;
+  font-size: 10px;
+  background: rgba(29, 134, 217, 0.12);
+  color: var(--accent, #1677ff);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.dumpsys-param-toggle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.param-field-with-picker {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.param-field-with-picker .param-field-input {
+  flex: 1;
+}
+
+.dumpsys-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dumpsys-picker-icon {
+  display: block;
+  color: var(--text-secondary);
+  transition: color 0.12s;
+}
+
+.dumpsys-picker-btn:hover .dumpsys-picker-icon {
+  color: var(--accent);
+}
+
+/* Package picker modal */
+
+.dumpsys-picker-modal {
+  max-width: 480px;
+  width: 90vw;
+}
+
+.dumpsys-picker-modal .logcat-selector-item.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+
+
+.param-editor-hint-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* ── Responsive overrides ── */
+
+@media (max-width: 900px) {
+  .cmdlist-panel,
+  .param-editor-panel {
+    min-width: 0;
+  }
+}
+
 .left-panel-collapsed {
   align-items: stretch;
 }
@@ -1379,6 +1754,14 @@ h3 {
 
 .panel-list-head,
 .workspace-right-header,
+.panel-command-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
 .panel-command-card-head,
 .panel-item-head,
 .catalog-command-head,
@@ -2570,6 +2953,8 @@ h3 {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .subcommand-toggle strong,
@@ -2585,16 +2970,27 @@ h3 {
   display: flex;
   align-items: baseline;
   gap: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel-command-title-line strong {
   color: var(--text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 55%;
 }
 
 .panel-command-summary {
   color: var(--text-muted, #999);
   font-size: 12px;
   font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .panel-command-inline-preview {
@@ -2607,6 +3003,8 @@ h3 {
   font-family: monospace;
   background: none;
   padding: 0;
+  min-width: 0;
+  display: block;
 }
 
 .subcommand-toggle span,
@@ -3720,6 +4118,8 @@ mark {
 
   .left-panel,
   .middle-panel,
+  .cmdlist-panel,
+  .param-editor-panel,
   .workspace-right-panel {
     grid-column: 1 / 2;
   }
@@ -3728,11 +4128,13 @@ mark {
     display: none;
   }
 
-  .left-panel {
+  .left-panel,
+  .cmdlist-panel {
     grid-row: 1 / 2;
   }
 
-  .middle-panel {
+  .middle-panel,
+  .param-editor-panel {
     grid-row: 2 / 3;
   }
 

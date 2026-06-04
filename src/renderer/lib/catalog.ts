@@ -3153,3 +3153,27 @@ export function buildCommandString(command: CommandMeta, values: Record<string, 
 export function createDefaultParamValues(command: CommandMeta): Record<string, string> {
   return Object.fromEntries((command.params ?? []).map((param) => [param.key, param.defaultValue ?? ""]));
 }
+// ── Param type detection (shared by dialog & param editor) ──
+
+export function isToggleParam(param: CommandParam): boolean {
+  if (param.required) return false;
+  const defaultValue = param.defaultValue?.trim() ?? "";
+  if (defaultValue.startsWith("-") && !/\s/.test(defaultValue)) return true;
+  return /^(--?[^\s（(]+)（.+）$/.test(param.placeholder.trim());
+}
+
+export function getToggleParamValue(param: CommandParam): string {
+  const defaultValue = param.defaultValue?.trim() ?? "";
+  if (defaultValue) return defaultValue;
+  const match = param.placeholder.trim().match(/^(--?[^\s（(]+)/);
+  return match?.[1] ?? "";
+}
+
+export function getParamInlineText(param: CommandParam): string {
+  if (isToggleParam(param)) {
+    const token = getToggleParamValue(param);
+    const description = param.placeholder.trim().match(/^[^（(]+[（(](.+)[）)]$/)?.[1];
+    return description ? `${token} ${param.label}（${description}）` : `${token} ${param.label}`;
+  }
+  return param.placeholder || param.label;
+}

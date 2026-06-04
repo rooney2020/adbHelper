@@ -1,7 +1,7 @@
 import { Fragment, Suspense, lazy, memo, startTransition, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Icon from "./components/Icon";
 import ReactMarkdown from "react-markdown";
-import { buildCommandString, categories, createDefaultParamValues, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
+import { buildCommandString, categories, createDefaultParamValues, isToggleParam, getToggleParamValue, getParamInlineText, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
 import { fallbackApi, matchesFilter, normalizeLogcatRefreshIntervalMs, normalizeLogcatLevelSelection, fetchDevApi, postDevApi } from "./lib/fallbackApi";
 import { renderOutputPreview, renderDiffText, buildDiffRows, buildDiffSegments, getResultPrimaryCommand, getDiffRecordMeta, countOutputLines, copyText, buildExportBaseName, downloadTextFile, downloadBlobFile, decodeBase64ToBlob, buildMarkdownExport, buildTextExport, resolveDiffTarget, highlightText, wrapInMarkdownCodeBlock, historyItemToRunResult } from "./lib/outputRenderers";
 
@@ -1936,10 +1936,11 @@ function getDefaultPanelWidths(totalWidth: number) {
     totalWidth - WORKSPACE_FIXED_CHROME_TOTAL,
     MIN_LEFT_PANEL_WIDTH + MIN_MIDDLE_PANEL_WIDTH + MIN_RIGHT_PANEL_WIDTH
   );
-  const unitWidth = availableWidth / 8;
+  // 1:1:2 ratio for cmd-list : param-editor : exec-results
+  const unitWidth = availableWidth / 4;
 
   let leftWidth = Math.round(unitWidth);
-  let middleWidth = Math.round(unitWidth * 3);
+  let middleWidth = Math.round(unitWidth);
   let rightWidth = availableWidth - leftWidth - middleWidth;
 
   if (leftWidth < MIN_LEFT_PANEL_WIDTH) {
@@ -1976,43 +1977,6 @@ function getDefaultPanelWidths(totalWidth: number) {
     leftWidth,
     middleWidth
   };
-}
-
-function isToggleParam(param: CommandParam) {
-  if (param.required) {
-    return false;
-  }
-
-  const defaultValue = param.defaultValue?.trim() ?? "";
-  if (defaultValue.startsWith("-") && !/\s/.test(defaultValue)) {
-    return true;
-  }
-
-  return /^(--?[^\s（(]+)（.+）$/.test(param.placeholder.trim());
-}
-
-function getToggleParamValue(param: CommandParam) {
-  const defaultValue = param.defaultValue?.trim() ?? "";
-  if (defaultValue) {
-    return defaultValue;
-  }
-
-  const match = param.placeholder.trim().match(/^(--?[^\s（(]+)/);
-  return match?.[1] ?? "";
-}
-
-function getParamInlineText(param: CommandParam) {
-  if (isToggleParam(param)) {
-    const token = getToggleParamValue(param);
-    const description = param.placeholder.trim().match(/^[^（(]+[（(](.+)[）)]$/)?.[1];
-    return description ? `${token} ${param.label}（${description}）` : `${token} ${param.label}`;
-  }
-
-  if (param.key === "compressionAlgorithm") {
-    return `-z ${param.label}(${param.placeholder})`;
-  }
-
-  return `${param.label} ${param.placeholder}`.trim();
 }
 
 function LayoutPopoutPanel({ panelId, runtimeApi }: { panelId: number; runtimeApi: NonNullable<Window["adbHelperApi"]> }) {
@@ -2609,8 +2573,8 @@ export default function App() {
   const workspaceColumns = rightWorkspaceMaximized
     ? "minmax(0, 1fr)"
     : rightCollapsed
-      ? `${leftCollapsed ? 88 : leftPanelWidth}px ${leftCollapsed ? 0 : 8}px minmax(${middlePanelWidth}px, 1fr) 0 44px`
-      : `${leftCollapsed ? 88 : leftPanelWidth}px ${leftCollapsed ? 0 : 8}px ${middlePanelWidth}px 8px minmax(420px, 1fr)`;
+      ? `${leftPanelWidth}px 8px ${middlePanelWidth}px 8px 44px`
+      : `${leftPanelWidth}px 8px ${middlePanelWidth}px 8px minmax(420px, 1fr)`;
   const diffOptions = useMemo<DiffOption[]>(() => [
     ...(lastRunResult
       ? [{
@@ -3798,7 +3762,7 @@ export default function App() {
     setLogcatVirtualStartIndex((current) => current === nextStartIndex ? current : nextStartIndex);
   }, [activeMainView, deferredRenderedLogcatItems.length, logcatMaximized, logcatVirtualRowHeight, shouldVirtualizeLogcat]);
 
-  function beginHorizontalDrag(mode: "left" | "middle", event: React.PointerEvent<HTMLDivElement>) {
+  function beginHorizontalDrag(mode: "first" | "second", event: React.PointerEvent<HTMLDivElement>) {
     const workspace = workspaceRef.current;
     if (!workspace || rightWorkspaceMaximized) {
       return;
@@ -3814,14 +3778,14 @@ export default function App() {
     const onMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
 
-      if (mode === "left") {
+      if (mode === "first") {
         const maxLeft = totalWidth - startMiddle - MIN_RIGHT_PANEL_WIDTH - WORKSPACE_FIXED_CHROME_TOTAL;
         setLeftPanelWidth(Math.min(Math.max(startLeft + deltaX, MIN_LEFT_PANEL_WIDTH), maxLeft));
         return;
       }
 
-      const frozenLeftWidth = leftCollapsed ? 88 : leftPanelWidth;
-      const maxMiddle = totalWidth - frozenLeftWidth - MIN_RIGHT_PANEL_WIDTH - WORKSPACE_FIXED_CHROME_TOTAL;
+      // mode === "second": resize handle between param-editor and exec-results
+      const maxMiddle = totalWidth - leftPanelWidth - MIN_RIGHT_PANEL_WIDTH - WORKSPACE_FIXED_CHROME_TOTAL;
       setMiddlePanelWidth(Math.min(Math.max(startMiddle + deltaX, MIN_MIDDLE_PANEL_WIDTH), maxMiddle));
     };
 
@@ -6708,8 +6672,6 @@ export default function App() {
           layout={{
             workspaceRef,
             workspaceIsModalOpen,
-            leftCollapsed,
-            setLeftCollapsed,
             rightWorkspaceMaximized,
             workspaceColumns,
             beginHorizontalDrag,
@@ -6731,6 +6693,7 @@ export default function App() {
             findCommandEntry,
             getPanelCommandTitle,
             runPanelCommandBlock,
+            updateActivePanelCommands,
           }}
           workspace={{
             rightCollapsed,

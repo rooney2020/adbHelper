@@ -1083,12 +1083,36 @@ protocol.registerSchemesAsPrivileged([
     { scheme: "winscope", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: "local-file", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
     // Register custom protocol to serve winscope files
     const WINSCOPE_ROOT = "/home/tsdl/Documents/software/winscope/dist";
     const WINSCOPE_SOURCE_ROOT = "/home/tsdl/Documents/software/winscope";
-    const WINSCOPE_FONTS_ROOT = join(app.getAppPath(), "public/winscope/fonts");
+    const WINSCOPE_FONTS_ROOT = join(__dirname, "../../public/winscope/fonts");
+    const fontBase64Cache = {};
+    async function loadFontBase64(name) {
+        if (fontBase64Cache[name])
+            return fontBase64Cache[name];
+        const fontPath = join(WINSCOPE_FONTS_ROOT, name);
+        try {
+            const buf = await readFile(fontPath);
+            fontBase64Cache[name] = buf.toString("base64");
+            console.log(`[Winscope] Font loaded: ${name}, size: ${buf.length}`);
+            return fontBase64Cache[name];
+        }
+        catch (e) {
+            console.error(`[Winscope] Failed to load font ${name}:`, e);
+            return "";
+        }
+    }
+    const [materialIconsB64, robotoLightB64, robotoRegularB64, robotoMediumB64, robotoBoldB64, openSansSemiBoldB64,] = await Promise.all([
+        loadFontBase64("MaterialIcons-Regular.woff2"),
+        loadFontBase64("Roboto-Light.woff2"),
+        loadFontBase64("Roboto-Regular.woff2"),
+        loadFontBase64("Roboto-Medium.woff2"),
+        loadFontBase64("Roboto-Bold.woff2"),
+        loadFontBase64("OpenSans-SemiBold.woff2"),
+    ]);
     const MIME_MAP = {
         ".html": "text/html; charset=utf-8",
         ".js": "application/javascript; charset=utf-8",
@@ -1107,7 +1131,7 @@ app.whenReady().then(() => {
   font-family: 'Material Icons';
   font-style: normal;
   font-weight: 400;
-  src: url(winscope://fonts/MaterialIcons-Regular.woff2) format('woff2');
+  src: url(data:font/woff2;base64,${materialIconsB64}) format('woff2');
 }
 .material-icons,
 .md-icon,
@@ -1163,11 +1187,14 @@ svg + span.material-icons {
 }
 `;
     const LOCAL_ROBOTO_CSS = `
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 300; src: url(winscope://fonts/Roboto-Light.woff2) format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 400; src: url(winscope://fonts/Roboto-Regular.woff2) format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 500; src: url(winscope://fonts/Roboto-Medium.woff2) format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 700; src: url(winscope://fonts/Roboto-Bold.woff2) format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: italic; font-weight: 400; src: url(winscope://fonts/Roboto-Italic.woff2) format('woff2'); }
+@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 300; src: url(data:font/woff2;base64,${robotoLightB64}) format('woff2'); }
+@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 400; src: url(data:font/woff2;base64,${robotoRegularB64}) format('woff2'); }
+@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 500; src: url(data:font/woff2;base64,${robotoMediumB64}) format('woff2'); }
+@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 700; src: url(data:font/woff2;base64,${robotoBoldB64}) format('woff2'); }
+@font-face { font-family: 'Roboto'; font-style: italic; font-weight: 400; src: url(data:font/woff2;base64,${robotoRegularB64}) format('woff2'); }
+`;
+    const LOCAL_OPEN_SANS_CSS = `
+@font-face { font-family: 'Open Sans'; font-style: normal; font-weight: 600; src: url(data:font/woff2;base64,${openSansSemiBoldB64}) format('woff2'); font-display: swap; }
 `;
     protocol.handle("winscope", async (request) => {
         try {
@@ -1180,27 +1207,12 @@ svg + span.material-icons {
                 });
             }
             if (strippedPath === "fonts/material-icons.css") {
-                let css = LOCAL_MATERIAL_ICONS_CSS;
-                try {
-                    const fontCandidates = [
-                        join(WINSCOPE_FONTS_ROOT, "MaterialIcons-Regular.woff2"),
-                        join(__dirname, "../renderer/public/winscope/fonts/MaterialIcons-Regular.woff2"),
-                        join(process.cwd(), "public/winscope/fonts/MaterialIcons-Regular.woff2"),
-                    ];
-                    for (const fc of fontCandidates) {
-                        try {
-                            const fontBuf = await readFile(fc);
-                            const fontB64 = fontBuf.toString("base64");
-                            css = css.replace(/url\(winscope:\/\/fonts\/MaterialIcons-Regular\.woff2\) format\('woff2'\)/, `url(data:font/woff2;base64,${fontB64}) format('woff2')`);
-                            break;
-                        }
-                        catch {
-                            continue;
-                        }
-                    }
-                }
-                catch { /* fallback to original css */ }
-                return new Response(css, {
+                return new Response(LOCAL_MATERIAL_ICONS_CSS, {
+                    headers: { "Content-Type": "text/css; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400" },
+                });
+            }
+            if (strippedPath === "fonts/opensans.css") {
+                return new Response(LOCAL_OPEN_SANS_CSS, {
                     headers: { "Content-Type": "text/css; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400" },
                 });
             }
@@ -1230,18 +1242,21 @@ svg + span.material-icons {
             const contentType = MIME_MAP[ext] ?? "application/octet-stream";
             if (strippedPath === "index.html") {
                 let html = body.toString("utf-8");
-                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.cn\/css\?family=Roboto[^"]*"[^>]*>/g, '<link rel="stylesheet" href="winscope://fonts/roboto.css">');
-                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.cn\/icon\?family=Material\+Icons"[^>]*>/g, '<link rel="stylesheet" href="winscope://fonts/material-icons.css">');
-                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.com\/css\?family=Roboto[^"]*"[^>]*>/g, '<link rel="stylesheet" href="winscope://fonts/roboto.css">');
-                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.com\/icon\?family=Material\+Icons"[^>]*>/g, '<link rel="stylesheet" href="winscope://fonts/material-icons.css">');
+                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.cn\/css\?family=Roboto[^"]*"[^>]*>/g, "");
+                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.cn\/icon\?family=Material\+Icons"[^>]*>/g, "");
+                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.com\/css\?family=Roboto[^"]*"[^>]*>/g, "");
+                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.com\/icon\?family=Material\+Icons"[^>]*>/g, "");
+                html = html.replace(/<link[^>]*href="https?:\/\/fonts\.googleapis\.[a-z]+\/css2\?family=[^"]*"[^>]*>/g, "");
+                const inlineFontStyles = `<style>${LOCAL_ROBOTO_CSS}${LOCAL_MATERIAL_ICONS_CSS}${LOCAL_OPEN_SANS_CSS}</style>`;
+                html = html.replace("<head>", "<head>" + inlineFontStyles);
                 const fixIconScript = `<script>
 (function() {
   function fixMaterialIcons() {
-    document.querySelectorAll('.material-icons, .md-icon, [class*="material-icons"], i.md-icon').forEach(function(el) {
+    document.querySelectorAll('.material-icons, .md-icon, [class*="material-icons"], i.md-icon, md-icon').forEach(function(el) {
       el.style.fontFamily = "'Material Icons', sans-serif";
       el.style.fontWeight = 'normal';
       el.style.fontStyle = 'normal';
-      el.style.fontSize = '24px';
+      el.style.fontSize = '18px';
       el.style.display = 'inline-block';
       el.style.lineHeight = '1';
       el.style.textTransform = 'none';
@@ -1277,6 +1292,7 @@ svg + span.material-icons {
             }
             if (ext === ".js") {
                 let js = body.toString("utf-8");
+                js = js.replace(/@import\s+url\(https?:\/\/fonts\.googleapis\.com\/css2\?family=Open\+Sans[^)]*\)\s*;?/g, LOCAL_OPEN_SANS_CSS);
                 js = js.replace(/@import\s+url\([^)]*fonts\.googleapis\.com[^)]*\)\s*;?/g, "");
                 js = js.replace(/@import\s+url\([^)]*fonts\.googleapis\.cn[^)]*\)\s*;?/g, "");
                 js = js.replace(/@import\s+url\([^)]*fonts\.gstatic\.com[^)]*\)\s*;?/g, "");

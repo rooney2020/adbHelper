@@ -1,9 +1,12 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 import JSZip from "jszip";
-const execFileAsync = promisify(execFile);
+import { execFileDecoded, decodeBuffer } from "./execFileDecoded.js";
+async function execFileAsync(file, args = [], options = {}) {
+    const result = await execFileDecoded(file, args, options);
+    return { stdout: String(result.stdout), stderr: String(result.stderr) };
+}
 const adbExecutable = process.env.ADB_HELPER_ADB ?? "adb";
 const BUFFER_LIMIT = 3000;
 const PROCESS_MAP_REFRESH_MS = 5000;
@@ -322,7 +325,8 @@ function pushLine(session, line) {
 }
 function wireStream(session) {
     session.child?.stdout.on("data", (chunk) => {
-        const text = `${session.partialLine}${String(chunk)}`;
+        const chunkStr = chunk instanceof Buffer ? decodeBuffer(chunk) : String(chunk);
+        const text = `${session.partialLine}${chunkStr}`;
         const lines = text.split(/\r?\n/);
         session.partialLine = lines.pop() ?? "";
         for (const line of lines) {
@@ -334,7 +338,8 @@ function wireStream(session) {
         }
     });
     session.child?.stderr.on("data", (chunk) => {
-        const message = String(chunk).trim();
+        const chunkStr = chunk instanceof Buffer ? decodeBuffer(chunk) : String(chunk);
+        const message = chunkStr.trim();
         if (message) {
             session.message = message;
         }

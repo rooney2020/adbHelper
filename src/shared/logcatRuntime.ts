@@ -1,11 +1,14 @@
-import { execFile, spawn, type ChildProcessByStdio } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { createWriteStream, mkdirSync, readFileSync, statSync, type WriteStream } from "node:fs";
 import { basename, join } from "node:path";
 import type { Readable } from "node:stream";
-import { promisify } from "node:util";
 import JSZip from "jszip";
+import { execFileDecoded, decodeBuffer } from "./execFileDecoded.js";
 
-const execFileAsync = promisify(execFile);
+async function execFileAsync(file: string, args: string[] = [], options: Record<string, unknown> = {}): Promise<{ stdout: string; stderr: string }> {
+  const result = await execFileDecoded(file, args, options as any);
+  return { stdout: String(result.stdout), stderr: String(result.stderr) };
+}
 const adbExecutable = process.env.ADB_HELPER_ADB ?? "adb";
 const BUFFER_LIMIT = 3000;
 const PROCESS_MAP_REFRESH_MS = 5000;
@@ -447,7 +450,8 @@ function pushLine(session: LogcatSession, line: string) {
 
 function wireStream(session: LogcatSession) {
   session.child?.stdout.on("data", (chunk: Buffer | string) => {
-    const text = `${session.partialLine}${String(chunk)}`;
+    const chunkStr = chunk instanceof Buffer ? decodeBuffer(chunk) : String(chunk);
+    const text = `${session.partialLine}${chunkStr}`;
     const lines = text.split(/\r?\n/);
     session.partialLine = lines.pop() ?? "";
     for (const line of lines) {
@@ -460,7 +464,8 @@ function wireStream(session: LogcatSession) {
   });
 
   session.child?.stderr.on("data", (chunk: Buffer | string) => {
-    const message = String(chunk).trim();
+    const chunkStr = chunk instanceof Buffer ? decodeBuffer(chunk) : String(chunk);
+    const message = chunkStr.trim();
     if (message) {
       session.message = message;
     }

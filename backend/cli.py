@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import json
+import locale
 import os
+import sys
 from pathlib import Path
 import re
 import shlex
@@ -12,15 +15,43 @@ import subprocess
 import time
 from typing import Any
 
+# Force UTF-8 stdout on Windows so Electron can reliably decode the JSON stream.
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# adb on Windows outputs the system active code page (e.g., cp936 for Chinese),
+# while on Linux/macOS adb typically outputs UTF-8.
+if sys.platform == "win32":
+    _ADB_ENCODING = locale.getpreferredencoding(False)  # e.g. cp936
+else:
+    _ADB_ENCODING = "utf-8"
+
+# Platform-aware home directory
+_HOME = Path.home()
 
 STATE_DIR = Path(__file__).resolve().parent / "state"
 HISTORY_FILE = STATE_DIR / "history.json"
 BACKUP_CONFIG_FILE = STATE_DIR / "backup_config.json"
 LOGCAT_CONFIG_FILE = STATE_DIR / "logcat_config.json"
 SCRCPY_CONFIG_FILE = STATE_DIR / "scrcpy_display_config.json"
+APP_LOG_FILE = STATE_DIR / "app.log"
+
+
+def log(message: str) -> None:
+    """Append a timestamped log line to app.log."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with APP_LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {message}\n")
+    except Exception:
+        pass
+
+
 ADB_EXECUTABLE = os.environ.get("ADB_HELPER_ADB", "adb")
-DEFAULT_BACKUP_ROOT = Path(os.environ.get("ADB_HELPER_BACKUP_ROOT", "/home/tsdl/ssd/ingo/backup")).expanduser()
-DEFAULT_LOGCAT_OUTPUT_DIR = Path(os.environ.get("ADB_HELPER_LOGCAT_ROOT", "/home/tsdl/ssd/ingo/logcat")).expanduser()
+DEFAULT_BACKUP_ROOT = Path(os.environ.get("ADB_HELPER_BACKUP_ROOT", str(_HOME / "adbhelper" / "backup"))).expanduser()
+DEFAULT_LOGCAT_OUTPUT_DIR = Path(os.environ.get("ADB_HELPER_LOGCAT_ROOT", str(_HOME / "adbhelper" / "logcat"))).expanduser()
 DEFAULT_VERSION_PROP = "ro.build.display.id"
 DEFAULT_BACKUP_PATHS = ["/system/framework", "/system/app", "/system/priv-app"]
 DEFAULT_RESTORE_PATHS = ["/system/framework"]
@@ -188,7 +219,11 @@ def load_backup_config() -> dict[str, Any]:
     version_prop = str(raw.get("versionProp") or DEFAULT_VERSION_PROP).strip() or DEFAULT_VERSION_PROP
     backup_paths = normalize_backup_paths(list(raw.get("backupPaths") or DEFAULT_BACKUP_PATHS))
     restore_paths = normalize_backup_paths(list(raw.get("restorePaths") or DEFAULT_RESTORE_PATHS))
-    backup_root = normalize_backup_root(str(raw.get("backupRoot") or defaults["backupRoot"]))
+    stored_root = str(raw.get("backupRoot") or defaults["backupRoot"])
+    # Migration: on Windows, ignore saved paths that look like Unix paths from an older version
+    if os.name == "nt" and not re.match(r"^[A-Za-z]:\\", stored_root) and stored_root.startswith("/"):
+        stored_root = defaults["backupRoot"]
+    backup_root = normalize_backup_root(stored_root)
     return {
         "versionProp": version_prop,
         "backupPaths": backup_paths or DEFAULT_BACKUP_PATHS[:],
@@ -444,23 +479,37 @@ def emit(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def count_cjk(text: str) -> int:
+    return sum(
+        1
+        for c in text
+        if "\u4e00" <= c <= "\u9fff" or "\u3400" <= c <= "\u4dbf" or "\uf900" <= c <= "\ufaff"
+    )
+
+
+def decode_adb_output(raw: bytes) -> str:
+    utf8_str = raw.decode("utf-8", errors="replace")
+    if "\ufffd" not in utf8_str:
+        return utf8_str
+    utf8_cjk = count_cjk(utf8_str)
+    if sys.platform == "win32":
+        try:
+            gbk_str = raw.decode("gbk")
+            gbk_cjk = count_cjk(gbk_str)
+            if gbk_cjk >= utf8_cjk:
+                return gbk_str
+        except (UnicodeDecodeError, LookupError):
+            pass
+    return utf8_str
+
+
 def run_adb(args: list[str]) -> str:
     completed = subprocess.run(
         [ADB_EXECUTABLE, *args],
         check=True,
         capture_output=True,
-        text=True,
     )
-    return completed.stdout.strip()
-
-
-def run_adb_bytes(args: list[str]) -> bytes:
-    completed = subprocess.run(
-        [ADB_EXECUTABLE, *args],
-        check=True,
-        capture_output=True,
-    )
-    return completed.stdout
+    return decode_adb_output(completed.stdout).strip()
 
 
 def read_prop(device_id: str, prop: str) -> str:
@@ -474,17 +523,19 @@ def sanitize_build_id(value: str) -> str:
 
 
 def run_targeted_adb(device_id: str, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    completed = subprocess.run(
         [ADB_EXECUTABLE, "-s", device_id, *args],
         check=check,
         capture_output=True,
-        text=True,
     )
+    completed.stdout = decode_adb_output(completed.stdout)
+    completed.stderr = decode_adb_output(completed.stderr)
+    return completed
 
 
 def ensure_adb_available() -> None:
     try:
-        subprocess.run([ADB_EXECUTABLE, "version"], check=True, capture_output=True, text=True)
+        subprocess.run([ADB_EXECUTABLE, "version"], check=True, capture_output=True)
     except FileNotFoundError as error:
         raise RuntimeError("未找到 adb，请先安装 Android Platform Tools。") from error
     except subprocess.SubprocessError as error:
@@ -567,7 +618,11 @@ def is_system_package_path(path: str) -> bool:
 
 
 def load_package_permission_index(device_id: str) -> dict[str, list[str]]:
-    output = run_adb(["-s", device_id, "shell", "dumpsys", "package", "packages"])
+    try:
+        output = run_adb(["-s", device_id, "shell", "dumpsys", "package", "packages"])
+    except Exception as e:
+        log(f"[device-apps:{device_id}] dumpsys package packages FAILED: {type(e).__name__}: {e}")
+        return {}
     permission_index: dict[str, list[str]] = {}
     current_package: str | None = None
     current_list_key: str | None = None
@@ -604,7 +659,13 @@ def load_package_permission_index(device_id: str) -> dict[str, list[str]]:
 
 
 def extract_car_service_passenger_snapshot(device_id: str) -> dict[str, Any]:
-    output = run_adb(["-s", device_id, "shell", "dumpsys", "car_service"])
+    try:
+        output = run_adb(["-s", device_id, "shell", "dumpsys", "car_service"])
+    except Exception as e:
+        log(f"[car_service:{device_id}] dumpsys car_service FAILED: {type(e).__name__}: {e}")
+        return {}
+    if not output:
+        return {}
     snapshot: dict[str, Any] = {
         "enablePassengerSupport": "",
         "numberOfDrivers": "",
@@ -759,9 +820,23 @@ def parse_user_info_line(line: str) -> dict[str, Any] | None:
 
 
 def load_device_user_snapshot(device_id: str) -> dict[str, Any]:
-    output = run_adb(["-s", device_id, "shell", "dumpsys", "user"])
-    getprop_output = run_adb(["-s", device_id, "shell", "getprop"])
-    car_service_passenger = extract_car_service_passenger_snapshot(device_id)
+    try:
+        output = run_adb(["-s", device_id, "shell", "dumpsys", "user"])
+    except Exception as e:
+        log(f"[device-users:{device_id}] dumpsys user FAILED: {e}")
+        output = ""
+    log(f"[device-users:{device_id}] dumpsys user output length: {len(output)}")
+    log(f"[device-users:{device_id}] dumpsys user first 500 chars: {output[:500]}")
+    try:
+        getprop_output = run_adb(["-s", device_id, "shell", "getprop"])
+    except Exception as e:
+        log(f"[device-users:{device_id}] getprop FAILED: {e}")
+        getprop_output = ""
+    try:
+        car_service_passenger = extract_car_service_passenger_snapshot(device_id)
+    except Exception as e:
+        log(f"[device-users:{device_id}] car_service_passenger FAILED: {e}")
+        car_service_passenger = {}
     users: list[dict[str, Any]] = []
     summary: dict[str, Any] = {
         "currentUserId": None,
@@ -782,135 +857,148 @@ def load_device_user_snapshot(device_id: str) -> dict[str, Any]:
     device_property_list_key: str | None = None
     passenger_config: list[dict[str, str]] = []
 
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        if stripped.startswith("Current user:"):
-            value = stripped.split(":", 1)[1].strip()
-            summary["currentUserId"] = int(value) if value.isdigit() else value
-            continue
-
-        user_info = parse_user_info_line(stripped)
-        if user_info:
-            current_user = {
-                **user_info,
-                "serialNo": "",
-                "isPrimary": False,
-                "type": "",
-                "flags": "",
-                "state": "",
-                "created": "",
-                "lastLoggedIn": "",
-                "startTime": "",
-                "unlockTime": "",
-                "hasProfileOwner": "",
-                "restrictions": [],
-                "globalRestrictions": [],
-                "localRestrictions": [],
-                "effectiveRestrictions": [],
-            }
-            serial_match = re.search(r"serialNo=(\d+)", stripped)
-            if serial_match:
-                current_user["serialNo"] = serial_match.group(1)
-            primary_match = re.search(r"isPrimary=(\w+)", stripped)
-            if primary_match:
-                current_user["isPrimary"] = primary_match.group(1) == "true"
-            users.append(current_user)
-            current_list_key = None
-            in_device_properties = False
-            device_property_list_key = None
-            continue
-
-        if stripped == "Device properties:":
-            current_user = None
-            current_list_key = None
-            in_device_properties = True
-            device_property_list_key = None
-            continue
-
-        if current_user is not None:
-            if stripped == "Restrictions:":
-                current_list_key = "restrictions"
-                continue
-            if stripped == "Device policy global restrictions:":
-                current_list_key = "globalRestrictions"
-                continue
-            if stripped == "Device policy local restrictions:":
-                current_list_key = "localRestrictions"
-                continue
-            if stripped == "Effective restrictions:":
-                current_list_key = "effectiveRestrictions"
+    try:
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped:
                 continue
 
-            if current_list_key and line.startswith("      "):
-                if stripped not in {"none", "null"}:
-                    append_unique(current_user[current_list_key], stripped)
+            if stripped.startswith("Current user:"):
+                value = stripped.split(":", 1)[1].strip()
+                summary["currentUserId"] = int(value) if value.isdigit() else value
                 continue
-            current_list_key = None
 
-            for prefix, key in [
-                ("Type:", "type"),
-                ("Flags:", "flags"),
-                ("State:", "state"),
-                ("Created:", "created"),
-                ("Last logged in:", "lastLoggedIn"),
-                ("Start time:", "startTime"),
-                ("Unlock time:", "unlockTime"),
-                ("Has profile owner:", "hasProfileOwner"),
-            ]:
-                if stripped.startswith(prefix):
-                    current_user[key] = stripped.split(":", 1)[1].strip()
-                    break
-            continue
-
-        if in_device_properties:
-            if stripped == "Guest restrictions:":
-                device_property_list_key = "guestRestrictions"
-                summary[device_property_list_key] = []
+            user_info = parse_user_info_line(stripped)
+            if user_info:
+                current_user = {
+                    **user_info,
+                    "serialNo": "",
+                    "isPrimary": False,
+                    "type": "",
+                    "flags": "",
+                    "state": "",
+                    "created": "",
+                    "lastLoggedIn": "",
+                    "startTime": "",
+                    "unlockTime": "",
+                    "hasProfileOwner": "",
+                    "restrictions": [],
+                    "globalRestrictions": [],
+                    "localRestrictions": [],
+                    "effectiveRestrictions": [],
+                }
+                serial_match = re.search(r"serialNo=(\d+)", stripped)
+                if serial_match:
+                    current_user["serialNo"] = serial_match.group(1)
+                primary_match = re.search(r"isPrimary=(\w+)", stripped)
+                if primary_match:
+                    current_user["isPrimary"] = primary_match.group(1) == "true"
+                users.append(current_user)
+                current_list_key = None
+                in_device_properties = False
+                device_property_list_key = None
                 continue
-            if device_property_list_key and line.startswith("    "):
-                if stripped not in {"none", "null"}:
-                    append_unique(summary[device_property_list_key], stripped)
+
+            if stripped == "Device properties:":
+                current_user = None
+                current_list_key = None
+                in_device_properties = True
+                device_property_list_key = None
                 continue
-            device_property_list_key = None
 
-            if stripped.startswith("Device owner id:"):
-                summary["deviceOwnerId"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Started users state:"):
-                summary["startedUsersState"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Cached user IDs (including pre-created):"):
-                summary["cachedUserIdsIncludingPreCreated"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Cached user IDs:"):
-                summary["cachedUserIds"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Max users:"):
-                max_users_match = re.search(r"Max users:\s+(\d+)", stripped)
-                summary["maxUsers"] = int(max_users_match.group(1)) if max_users_match else stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Supports switchable users:"):
-                summary["supportsSwitchableUsers"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("All guests ephemeral:"):
-                summary["allGuestsEphemeral"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Force ephemeral users:"):
-                summary["forceEphemeralUsers"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Is headless-system mode:"):
-                summary["isHeadlessSystemMode"] = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("Owner name:"):
-                summary["ownerName"] = stripped.split(":", 1)[1].strip()
+            if current_user is not None:
+                if stripped == "Restrictions:":
+                    current_list_key = "restrictions"
+                    continue
+                if stripped == "Device policy global restrictions:":
+                    current_list_key = "globalRestrictions"
+                    continue
+                if stripped == "Device policy local restrictions:":
+                    current_list_key = "localRestrictions"
+                    continue
+                if stripped == "Effective restrictions:":
+                    current_list_key = "effectiveRestrictions"
+                    continue
 
-    for line in output.splitlines():
-        stripped = line.strip()
-        if "passenger" in stripped.lower() and ":" in stripped:
-            key, value = stripped.split(":", 1)
-            passenger_config.append({"source": "dumpsys user", "key": key.strip(), "value": value.strip()})
-    for line in getprop_output.splitlines():
-        match = GETPROP_LINE_PATTERN.match(line.strip())
-        if not match:
-            continue
-        key = match.group("key")
-        if "passenger" not in key.lower():
-            continue
-        passenger_config.append({"source": "getprop", "key": key, "value": match.group("value")})
+                if current_list_key and line.startswith("      "):
+                    if stripped not in {"none", "null"}:
+                        append_unique(current_user[current_list_key], stripped)
+                    continue
+                current_list_key = None
+
+                for prefix, key in [
+                    ("Type:", "type"),
+                    ("Flags:", "flags"),
+                    ("State:", "state"),
+                    ("Created:", "created"),
+                    ("Last logged in:", "lastLoggedIn"),
+                    ("Start time:", "startTime"),
+                    ("Unlock time:", "unlockTime"),
+                    ("Has profile owner:", "hasProfileOwner"),
+                ]:
+                    if stripped.startswith(prefix):
+                        current_user[key] = stripped.split(":", 1)[1].strip()
+                        break
+                continue
+
+            if in_device_properties:
+                if stripped == "Guest restrictions:":
+                    device_property_list_key = "guestRestrictions"
+                    summary[device_property_list_key] = []
+                    continue
+                if device_property_list_key and line.startswith("    "):
+                    if stripped not in {"none", "null"}:
+                        append_unique(summary[device_property_list_key], stripped)
+                    continue
+                device_property_list_key = None
+
+                if stripped.startswith("Device owner id:"):
+                    summary["deviceOwnerId"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Started users state:"):
+                    summary["startedUsersState"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Cached user IDs (including pre-created):"):
+                    summary["cachedUserIdsIncludingPreCreated"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Cached user IDs:"):
+                    summary["cachedUserIds"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Max users:"):
+                    max_users_match = re.search(r"Max users:\s+(\d+)", stripped)
+                    summary["maxUsers"] = int(max_users_match.group(1)) if max_users_match else stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Supports switchable users:"):
+                    summary["supportsSwitchableUsers"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("All guests ephemeral:"):
+                    summary["allGuestsEphemeral"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Force ephemeral users:"):
+                    summary["forceEphemeralUsers"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Is headless-system mode:"):
+                    summary["isHeadlessSystemMode"] = stripped.split(":", 1)[1].strip()
+                elif stripped.startswith("Owner name:"):
+                    summary["ownerName"] = stripped.split(":", 1)[1].strip()
+    except Exception as e:
+        log(f"[device-users:{device_id}] parse FAILED: {type(e).__name__}: {e}")
+
+    try:
+        for line in output.splitlines():
+            stripped = line.strip()
+            if "passenger" in stripped.lower() and ":" in stripped:
+                key, value = stripped.split(":", 1)
+                passenger_config.append({"source": "dumpsys user", "key": key.strip(), "value": value.strip()})
+        for line in getprop_output.splitlines():
+            match = GETPROP_LINE_PATTERN.match(line.strip())
+            if not match:
+                continue
+            key = match.group("key")
+            if "passenger" not in key.lower():
+                continue
+            passenger_config.append({"source": "getprop", "key": key, "value": match.group("value")})
+    except Exception as e:
+        log(f"[device-users:{device_id}] passenger parse FAILED: {type(e).__name__}: {e}")
+
+    log(f"[device-users:{device_id}] parsed summary: currentUserId={summary.get('currentUserId')}, "
+        f"maxUsers={summary.get('maxUsers')}, users_count={len(users)})")
+    if summary.get("currentUserId") is None:
+        log(f"[device-users:{device_id}] WARNING: currentUserId is None (dumpsys parsing may have failed)")
+    log(f"[device-users:{device_id}] summary keys with non-None values: "
+        + str({k: v for k, v in summary.items() if v is not None}))
 
     return {
         "summary": summary,
@@ -921,19 +1009,45 @@ def load_device_user_snapshot(device_id: str) -> dict[str, Any]:
 
 
 def list_actual_user_ids(device_id: str) -> list[int]:
-    snapshot = load_device_user_snapshot(device_id)
-    ids = sorted({int(user["id"]) for user in snapshot.get("users", []) if not user.get("preCreated")})
-    return ids or [0]
+    try:
+        snapshot = load_device_user_snapshot(device_id)
+        ids = sorted({int(user["id"]) for user in snapshot.get("users", []) if not user.get("preCreated")})
+        # Ensure the current interactive user is included even if not in dumpsys user's UserInfo list
+        current_user_id = snapshot.get("currentUserId")
+        if current_user_id is not None and isinstance(current_user_id, int) and current_user_id not in ids:
+            ids.append(current_user_id)
+            ids.sort()
+        return ids or [0]
+    except Exception as e:
+        log(f"[device-apps:{device_id}] list_actual_user_ids CRASHED: {type(e).__name__}: {e}")
+        return [0]
 
 
 def list_device_apps(device_id: str) -> list[dict[str, Any]]:
+    try:
+        return _list_device_apps_impl(device_id)
+    except Exception as e:
+        log(f"[device-apps:{device_id}] list_device_apps CRASHED: {type(e).__name__}: {e}")
+        return []
+
+
+def _list_device_apps_impl(device_id: str) -> list[dict[str, Any]]:
     apps: dict[str, dict[str, Any]] = {}
     permission_index = load_package_permission_index(device_id)
-    for user_id in list_actual_user_ids(device_id):
-        completed = run_targeted_adb(device_id, ["shell", "pm", "list", "packages", "-f", "-U", "--user", str(user_id)], check=False)
-        output = (completed.stdout or "").strip()
-        if completed.returncode != 0 or not output:
-            continue
+    actual_user_ids = list_actual_user_ids(device_id)
+    log(f"[device-apps:{device_id}] actual_user_ids: {actual_user_ids}")
+
+    # Move current user (typically 10 on headless) to front so it's queried first
+    snapshot = load_device_user_snapshot(device_id)
+    current_user_id = snapshot.get("currentUserId")
+    if current_user_id in actual_user_ids and current_user_id != actual_user_ids[0]:
+        sorted_ids = [current_user_id] + [u for u in actual_user_ids if u != current_user_id]
+    else:
+        sorted_ids = actual_user_ids
+
+    def _parse_pm_output(output: str, user_id: int | None = None) -> None:
+        if not output:
+            return
         for line in output.splitlines():
             match = PM_PACKAGE_PATTERN.match(line.strip())
             if not match:
@@ -950,8 +1064,25 @@ def list_device_apps(device_id: str) -> list[dict[str, Any]]:
                     "isSystemApp": is_system_package_path(match.group("path")),
                 },
             )
-            if user_id not in app_entry["installedUsers"]:
+            if user_id is not None and user_id not in app_entry["installedUsers"]:
                 app_entry["installedUsers"].append(user_id)
+
+    for user_id in sorted_ids:
+        completed = run_targeted_adb(device_id, ["shell", "pm", "list", "packages", "-f", "-U", "--user", str(user_id)], check=False)
+        cmd_returncode = completed.returncode
+        cmd_stdout = (completed.stdout or "").strip()
+        log(f"[device-apps:{device_id}] pm --user {user_id}: returncode={cmd_returncode}, stdout_len={len(cmd_stdout)}, stdout_preview={cmd_stdout[:200]}")
+        if cmd_returncode == 0 and cmd_stdout:
+            _parse_pm_output(completed.stdout or "", user_id)
+
+    # Fallback: --user not supported on pre-Android 11; retry without it
+    if not apps:
+        log(f"[device-apps:{device_id}] apps empty after --user attempts, trying fallback without --user")
+        completed = run_targeted_adb(device_id, ["shell", "pm", "list", "packages", "-f", "-U"], check=False)
+        log(f"[device-apps:{device_id}] pm fallback: returncode={completed.returncode}, stdout_len={len((completed.stdout or '').strip())}")
+        if completed.returncode == 0:
+            _parse_pm_output(completed.stdout or "")
+
     items = list(apps.values())
     for item in items:
         item["installedUsers"].sort()
@@ -1109,7 +1240,8 @@ def handle_device_apps(args: argparse.Namespace) -> None:
                 "items": list_device_apps(args.device),
             }
         )
-    except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
+    except Exception as error:
+        log(f"[handle_device_apps:{args.device}] ERROR: {type(error).__name__}: {error}")
         emit(
             {
                 "command": "device-apps",
@@ -1146,6 +1278,11 @@ def handle_device_app_detail(args: argparse.Namespace) -> None:
 def handle_device_users(args: argparse.Namespace) -> None:
     try:
         snapshot = load_device_user_snapshot(args.device)
+        user_ids = [u.get("id") for u in snapshot.get("users", [])]
+        log(f"[handle_device_users:{args.device}] emitting summary with "
+            f"currentUserId={snapshot.get('summary', {}).get('currentUserId')}, "
+            f"users_count={len(snapshot.get('users', []))}, user_ids={user_ids}, "
+            f"passenger_count={len(snapshot.get('passengerConfig', []))}")
         emit(
             {
                 "command": "device-users",
@@ -1154,7 +1291,8 @@ def handle_device_users(args: argparse.Namespace) -> None:
                 **snapshot,
             }
         )
-    except (FileNotFoundError, subprocess.SubprocessError, RuntimeError) as error:
+    except Exception as error:
+        log(f"[handle_device_users:{args.device}] ERROR: {type(error).__name__}: {error}")
         emit(
             {
                 "command": "device-users",
@@ -1743,9 +1881,10 @@ def handle_run(args: argparse.Namespace) -> None:
         command,
         check=False,
         capture_output=True,
-        text=True,
         timeout=30,
     )
+    completed.stdout = decode_adb_output(completed.stdout)
+    completed.stderr = decode_adb_output(completed.stderr)
     finished_at = int(time.time() * 1000)
     duration = int((time.perf_counter() - started_at) * 1000)
     executed_command = " ".join(command)

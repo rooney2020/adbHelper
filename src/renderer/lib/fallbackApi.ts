@@ -681,8 +681,9 @@ export const fallbackApi: NonNullable<Window["adbHelperApi"]> = {
       return r ?? { status: "fallback", dataUrl: "", message: "浏览器 API 不可用" };
     },
     getWinscopePath: async () => ({
-      status: "ok" as const,
-      path: "/home/tsdl/Documents/software/winscope/dist/index.html"
+      status: "error" as const,
+      path: "",
+      message: "Winscope 不可用（浏览器预览态）"
     }),
     winscopeProxy: async () => ({
       status: "fallback" as const,

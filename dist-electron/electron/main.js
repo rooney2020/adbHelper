@@ -2,9 +2,10 @@ import { Menu, app, BrowserWindow, dialog, ipcMain, protocol, shell } from "elec
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { execFileDecoded } from "../shared/execFileDecoded.js";
+import { homedir, tmpdir } from "node:os";
+import { execFileDecoded, decodeBuffer } from "../shared/execFileDecoded.js";
 import { readFile, writeFile, mkdir, readdir, stat as fsStat, open as fsOpen } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { clearLogcatSession, exportLogcatSession, getLogcatSessionState, startLogcatSession, stopAllLogcatSessions, stopLogcatSession, updateLogcatSessionFilters } from "../shared/logcatRuntime.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,6 +13,9 @@ const execFileAsync = execFileDecoded;
 const pythonExecutable = process.env.ADB_HELPER_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
 const backendCliPath = join(__dirname, "../../backend/cli.py");
 const workspaceRoot = join(__dirname, "../..");
+// Winscope proxy process tracking for auto-recovery
+let _winscopeProxyProcess = null;
+let _winscopeProxyRunning = false;
 function resolveWorkingPath(targetPath) {
     return isAbsolute(targetPath) ? targetPath : resolve(workspaceRoot, targetPath);
 }
@@ -19,6 +23,65 @@ function toStr(v) {
     if (v === undefined || v === null)
         return "";
     return typeof v === "string" ? v : v.toString("utf8");
+}
+async function _checkProxyAlive() {
+    if (!_winscopeProxyRunning || !_winscopeProxyProcess || _winscopeProxyProcess.killed) {
+        return false;
+    }
+    // On non-Windows, use lsof; on Windows trust the process ref
+    if (process.platform === "win32") {
+        return _winscopeProxyRunning;
+    }
+    try {
+        const { stdout } = await execFileAsync("lsof", ["-ti", ":5544"], { timeout: 2000 });
+        return !!toStr(stdout).trim();
+    }
+    catch {
+        return false;
+    }
+}
+async function _ensureWinscopeProxy(winscopeRoot) {
+    const WINSCOPE_PROXY = join(winscopeRoot, "winscope_proxy.py");
+    const TOKEN_FILE = join(homedir(), ".config/winscope/.token");
+    const alive = await _checkProxyAlive();
+    if (alive) {
+        try {
+            return (await readFile(TOKEN_FILE, "utf-8")).trim();
+        }
+        catch {
+            // Token file missing — restart anyway
+        }
+    }
+    // Start (or restart) proxy
+    const child = spawn(pythonExecutable, [WINSCOPE_PROXY], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+    });
+    child.on("exit", () => {
+        _winscopeProxyRunning = false;
+        _winscopeProxyProcess = null;
+    });
+    child.on("error", () => {
+        _winscopeProxyRunning = false;
+        _winscopeProxyProcess = null;
+    });
+    child.unref();
+    _winscopeProxyProcess = child;
+    _winscopeProxyRunning = true;
+    // Wait for proxy to start and create token (poll up to 5s)
+    for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+            const token = (await readFile(TOKEN_FILE, "utf-8")).trim();
+            if (token)
+                return token;
+        }
+        catch {
+            // Token not ready yet
+        }
+    }
+    return null;
 }
 async function invokeBackend(args) {
     const { stdout } = await execFileAsync(pythonExecutable, [backendCliPath, ...args], {
@@ -50,19 +113,50 @@ function registerIpcHandlers() {
         return invokeBackend(["probe", "--device", payload.deviceId]);
     });
     ipcMain.handle("device.apps", async (_event, payload) => {
-        return invokeBackend(["device-apps", "--device", payload.deviceId]);
+        try {
+            return await invokeBackend(["device-apps", "--device", payload.deviceId]);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error("[IPC] device.apps error:", message);
+            return { status: "error", items: [], message };
+        }
     });
     ipcMain.handle("device.appDetail", async (_event, payload) => {
-        return invokeBackend(["device-app-detail", "--device", payload.deviceId, "--package-name", payload.packageName]);
+        try {
+            return await invokeBackend(["device-app-detail", "--device", payload.deviceId, "--package-name", payload.packageName]);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { status: "error", detail: null, message };
+        }
     });
     ipcMain.handle("device.users", async (_event, payload) => {
-        return invokeBackend(["device-users", "--device", payload.deviceId]);
+        try {
+            return await invokeBackend(["device-users", "--device", payload.deviceId]);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { status: "error", users: [], message };
+        }
     });
     ipcMain.handle("device.processes", async (_event, payload) => {
-        return invokeBackend(["device-processes", "--device", payload.deviceId]);
+        try {
+            return await invokeBackend(["device-processes", "--device", payload.deviceId]);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { status: "error", processes: [], message };
+        }
     });
     ipcMain.handle("device.displayList", async (_event, payload) => {
-        return invokeBackend(["device-display-list", "--device", payload.deviceId]);
+        try {
+            return await invokeBackend(["device-display-list", "--device", payload.deviceId]);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { status: "error", displays: [], message };
+        }
     });
     ipcMain.handle("scrcpy.config", async (_event, payload) => {
         return invokeBackend(["scrcpy-config", "--device", payload.deviceId, "--display-id", String(payload.displayId)]);
@@ -385,22 +479,79 @@ function registerIpcHandlers() {
         }
     });
     ipcMain.handle("layout.getWinscopePath", async () => {
-        return { status: "ok", path: "/home/tsdl/Documents/software/winscope/dist/index.html" };
+        const winscopeRoot = (() => {
+            const envPath = process.env.WINSCOPE_PATH;
+            if (envPath)
+                return envPath;
+            const distWinscope = resolve(__dirname, "../../dist/winscope");
+            try {
+                if (statSync(distWinscope).isDirectory())
+                    return distWinscope;
+            }
+            catch { }
+            const appDistWinscope = join(app.getAppPath(), "dist", "winscope");
+            try {
+                if (statSync(appDistWinscope).isDirectory())
+                    return appDistWinscope;
+            }
+            catch { }
+            const bundled = join(app.getAppPath(), "winscope", "dist");
+            try {
+                if (statSync(bundled).isDirectory())
+                    return bundled;
+            }
+            catch { }
+            const dev = resolve(__dirname, "../../winscope/dist");
+            try {
+                if (statSync(dev).isDirectory())
+                    return dev;
+            }
+            catch { }
+            return null;
+        })();
+        if (!winscopeRoot) {
+            return { status: "error", path: "", message: "未找到 Winscope 目录。请放置 winscope 文件到应用目录下的 dist/winscope/" };
+        }
+        return { status: "ok", path: join(winscopeRoot, "index.html") };
     });
     ipcMain.handle("layout.winscopeProxy", async () => {
-        const WINSCOPE_PROXY = "/home/tsdl/Documents/software/winscope/dist/winscope_proxy.py";
-        const TOKEN_FILE = join(process.env.HOME ?? "/home/tsdl", ".config/winscope/.token");
-        try {
-            // Check if proxy is already running
-            const { stdout: lsofOut } = await execFileAsync("lsof", ["-ti", ":5544"], { timeout: 3000 }).catch(() => ({ stdout: "" }));
-            if (!toStr(lsofOut).trim()) {
-                // Start proxy in background
-                const child = spawn("python3", [WINSCOPE_PROXY], { detached: true, stdio: "ignore" });
-                child.unref();
-                // Wait briefly for proxy to start and create token
-                await new Promise((r) => setTimeout(r, 1500));
+        const winscopeRoot = (() => {
+            const envPath = process.env.WINSCOPE_PATH;
+            if (envPath)
+                return envPath;
+            const distWinscope = resolve(__dirname, "../../dist/winscope");
+            try {
+                if (statSync(distWinscope).isDirectory())
+                    return distWinscope;
             }
-            const token = (await readFile(TOKEN_FILE, "utf-8")).trim();
+            catch { }
+            const appDistWinscope = join(app.getAppPath(), "dist", "winscope");
+            try {
+                if (statSync(appDistWinscope).isDirectory())
+                    return appDistWinscope;
+            }
+            catch { }
+            const bundled = join(app.getAppPath(), "winscope", "dist");
+            try {
+                if (statSync(bundled).isDirectory())
+                    return bundled;
+            }
+            catch { }
+            const dev = resolve(__dirname, "../../winscope/dist");
+            try {
+                if (statSync(dev).isDirectory())
+                    return dev;
+            }
+            catch { }
+            return null;
+        })();
+        if (!winscopeRoot)
+            return { status: "error", message: "未找到 Winscope 目录" };
+        try {
+            const token = await _ensureWinscopeProxy(winscopeRoot);
+            if (!token) {
+                return { status: "error", message: "Winscope 代理启动失败，请检查 winscope_proxy.py 是否可访问", token: "" };
+            }
             return { status: "ok", token };
         }
         catch (err) {
@@ -494,7 +645,7 @@ function registerIpcHandlers() {
             const result = await execFileAsync("adb", args, { timeout: 15000, maxBuffer: 20 * 1024 * 1024, encoding: "buffer" });
             const buf = Buffer.from(result.stdout);
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-            const savePath = payload.savePath || join(process.env.HOME ?? "/home/tsdl", "Pictures", `screenshot_d${payload.displayId ?? 0}_${timestamp}.png`);
+            const savePath = payload.savePath || join(homedir(), "Pictures", `screenshot_d${payload.displayId ?? 0}_${timestamp}.png`);
             await mkdir(dirname(savePath), { recursive: true });
             await writeFile(savePath, buf);
             const dataUrl = `data:image/png;base64,${buf.toString("base64")}`;
@@ -548,7 +699,7 @@ function registerIpcHandlers() {
             const files = [];
             for (const recording of recordings) {
                 const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-                const localPath = join(process.env.HOME ?? "/home/tsdl", "Videos", `screenrecord_d${recording.displayId}_${timestamp}_${Math.random().toString(36).slice(2, 6)}.mp4`);
+                const localPath = join(homedir(), "Videos", `screenrecord_d${recording.displayId}_${timestamp}_${Math.random().toString(36).slice(2, 6)}.mp4`);
                 await mkdir(dirname(localPath), { recursive: true });
                 await execFileAsync("adb", ["-s", payload.deviceId, "pull", recording.remotePath, localPath], { timeout: 30000 }).catch(() => { });
                 await execFileAsync("adb", ["-s", payload.deviceId, "shell", "rm", recording.remotePath], { timeout: 5000 }).catch(() => { });
@@ -598,7 +749,7 @@ function registerIpcHandlers() {
     // Crash/ANR - export files to local directory
     ipcMain.handle("crash.export", async (_event, payload) => {
         try {
-            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const homeDir = homedir();
             const outputDir = payload.outputDir ?? join(homeDir, "Documents", "adb-helper-crash-export");
             await mkdir(outputDir, { recursive: true });
             const result = await invokeBackend(["crash-export", "--device", payload.deviceId, "--output-dir", outputDir, ...payload.filePaths]);
@@ -611,7 +762,7 @@ function registerIpcHandlers() {
     // Bugreport - capture bugreport from device
     ipcMain.handle("bugreport.fetch", async (_event, payload) => {
         try {
-            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const homeDir = homedir();
             const outputDir = join(homeDir, "Documents", "adb-helper-bugreport");
             await mkdir(outputDir, { recursive: true });
             const timestamp = Date.now();
@@ -628,7 +779,7 @@ function registerIpcHandlers() {
     // Bugreport - list all bugreport files in output directory
     ipcMain.handle("bugreport.listFiles", async () => {
         try {
-            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const homeDir = homedir();
             const outputDir = join(homeDir, "Documents", "adb-helper-bugreport");
             await mkdir(outputDir, { recursive: true });
             const entries = await readdir(outputDir);
@@ -653,7 +804,7 @@ function registerIpcHandlers() {
     // Trace - start atrace capture on device
     ipcMain.handle("trace.start", async (_event, payload) => {
         try {
-            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const homeDir = homedir();
             const outputDir = join(homeDir, "Documents", "adb-helper-trace");
             await mkdir(outputDir, { recursive: true });
             const timestamp = Date.now();
@@ -686,7 +837,7 @@ function registerIpcHandlers() {
     // Trace - list all trace files in output directory
     ipcMain.handle("trace.listFiles", async () => {
         try {
-            const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const homeDir = homedir();
             const outputDir = join(homeDir, "Documents", "adb-helper-trace");
             await mkdir(outputDir, { recursive: true });
             const entries = await readdir(outputDir);
@@ -815,14 +966,14 @@ function registerIpcHandlers() {
                 }
             };
             monkeyChild.stdout?.on("data", (chunk) => {
-                const text = session.partialLine + chunk.toString();
+                const text = session.partialLine + decodeBuffer(chunk);
                 const lines = text.split("\n");
                 session.partialLine = lines.pop() ?? "";
                 for (const line of lines)
                     appendLog(line);
             });
             monkeyChild.stderr?.on("data", (chunk) => {
-                const text = chunk.toString();
+                const text = decodeBuffer(chunk);
                 const lines = text.split("\n");
                 for (const line of lines)
                     appendLog(line);
@@ -836,7 +987,7 @@ function registerIpcHandlers() {
             const logcatChild = spawn("adb", ["-s", deviceId, "logcat", "-v", "threadtime", "*:E"]);
             session.logcatChild = logcatChild;
             logcatChild.stdout?.on("data", (chunk) => {
-                const text = session.logcatPartialLine + chunk.toString();
+                const text = session.logcatPartialLine + decodeBuffer(chunk);
                 const lines = text.split("\n");
                 session.logcatPartialLine = lines.pop() ?? "";
                 for (const line of lines) {
@@ -1025,7 +1176,7 @@ const SIZE_MB = ${JSON.stringify(sizeMB)};
     // ─── Local file IPC handler ───────────────────────────────────────────
     ipcMain.handle("localFile.read", async (_event, payload) => {
         try {
-            const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const home = homedir();
             const allowedPrefixes = [join(home, "Pictures"), join(home, "Videos"), join(home, "Documents")];
             const resolved = resolve(payload.path);
             if (!allowedPrefixes.some((p) => resolved.startsWith(p + "/") || resolved.startsWith(p + "\\"))) {
@@ -1086,8 +1237,44 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
     // Register custom protocol to serve winscope files
-    const WINSCOPE_ROOT = "/home/tsdl/Documents/software/winscope/dist";
-    const WINSCOPE_SOURCE_ROOT = "/home/tsdl/Documents/software/winscope";
+    const winscopeRoot = (() => {
+        const envPath = process.env.WINSCOPE_PATH;
+        if (envPath)
+            return envPath;
+        // From electron/ dir: ../../dist/winscope/
+        const distWinscope = resolve(__dirname, "../../dist/winscope");
+        try {
+            if (statSync(distWinscope).isDirectory())
+                return distWinscope;
+        }
+        catch { }
+        // From app path: app/dist/winscope/
+        const appDistWinscope = join(app.getAppPath(), "dist", "winscope");
+        try {
+            if (statSync(appDistWinscope).isDirectory())
+                return appDistWinscope;
+        }
+        catch { }
+        // Bundled in resources/app/winscope/dist/
+        const bundled = join(app.getAppPath(), "winscope", "dist");
+        try {
+            if (statSync(bundled).isDirectory())
+                return bundled;
+        }
+        catch { }
+        // Developer sibling directory
+        const dev = resolve(__dirname, "../../winscope/dist");
+        try {
+            if (statSync(dev).isDirectory())
+                return dev;
+        }
+        catch { }
+        return null;
+    })();
+    const winscopeAvailable = winscopeRoot !== null;
+    console.log(`[Winscope] root: ${winscopeRoot}, available: ${winscopeAvailable}`);
+    const WINSCOPE_ROOT = winscopeRoot ?? "";
+    const WINSCOPE_SOURCE_ROOT = WINSCOPE_ROOT ? resolve(WINSCOPE_ROOT, "..") : "";
     const WINSCOPE_FONTS_ROOT = join(__dirname, "../../public/winscope/fonts");
     const fontBase64Cache = {};
     async function loadFontBase64(name) {
@@ -1105,14 +1292,25 @@ app.whenReady().then(async () => {
             return "";
         }
     }
-    const [materialIconsB64, robotoLightB64, robotoRegularB64, robotoMediumB64, robotoBoldB64, openSansSemiBoldB64,] = await Promise.all([
-        loadFontBase64("MaterialIcons-Regular.woff2"),
-        loadFontBase64("Roboto-Light.woff2"),
-        loadFontBase64("Roboto-Regular.woff2"),
-        loadFontBase64("Roboto-Medium.woff2"),
-        loadFontBase64("Roboto-Bold.woff2"),
-        loadFontBase64("OpenSans-SemiBold.woff2"),
-    ]);
+    // Only load fonts if winscope files are available
+    let materialIconsB64 = "", robotoLightB64 = "", robotoRegularB64 = "", robotoMediumB64 = "", robotoBoldB64 = "", openSansSemiBoldB64 = "";
+    if (winscopeAvailable) {
+        [
+            materialIconsB64,
+            robotoLightB64,
+            robotoRegularB64,
+            robotoMediumB64,
+            robotoBoldB64,
+            openSansSemiBoldB64,
+        ] = await Promise.all([
+            loadFontBase64("MaterialIcons-Regular.woff2"),
+            loadFontBase64("Roboto-Light.woff2"),
+            loadFontBase64("Roboto-Regular.woff2"),
+            loadFontBase64("Roboto-Medium.woff2"),
+            loadFontBase64("Roboto-Bold.woff2"),
+            loadFontBase64("OpenSans-SemiBold.woff2"),
+        ]);
+    }
     const MIME_MAP = {
         ".html": "text/html; charset=utf-8",
         ".js": "application/javascript; charset=utf-8",
@@ -1197,6 +1395,9 @@ svg + span.material-icons {
 @font-face { font-family: 'Open Sans'; font-style: normal; font-weight: 600; src: url(data:font/woff2;base64,${openSansSemiBoldB64}) format('woff2'); font-display: swap; }
 `;
     protocol.handle("winscope", async (request) => {
+        if (!winscopeAvailable) {
+            return new Response("Winscope 文件未找到。请将 winscope 目录放置在 app/dist/winscope/ 下。", { status: 404 });
+        }
         try {
             const requestUrl = new URL(request.url);
             const urlPath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, "");
@@ -1313,7 +1514,7 @@ svg + span.material-icons {
     protocol.handle("local-file", async (request) => {
         try {
             const urlPath = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, "");
-            const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+            const home = homedir();
             const allowedPrefixes = [join(home, "Pictures"), join(home, "Videos"), join(home, "Documents")];
             const resolved = resolve(urlPath);
             if (!allowedPrefixes.some((p) => resolved.startsWith(p + "/") || resolved.startsWith(p + "\\"))) {

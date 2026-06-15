@@ -1,0 +1,2 @@
+# Python 3.10 (py310)
+protobuf>=4.25,<6

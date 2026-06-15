@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Skill 评分 - {{ username }}{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="page-title">为 Skill 打分</div>
+    <div class="page-subtitle">对下面 11 个 Skill 进行 0-100 分评分，你的评分仅自己可见和可修改。拖动滑条后松手自动保存。</div>
+
+    <div id="skill-list">
+        {% for skill in skills %}
+        <div class="skill-card" data-skill-id="{{ skill.id }}">
+            <div class="skill-info">
+                <div class="skill-name">{{ loop.index }}. {{ skill.name }}</div>
+                <div class="skill-desc">{{ skill.description }}</div>
+                <span class="skill-trigger">{{ skill.trigger }}</span>
+            </div>
+            <div class="skill-rating">
+                <div class="score-slider-wrap">
+                    <input type="range" class="score-slider" min="0" max="100" step="1"
+                           value="{{ user_ratings.get(skill.id, 0) }}"
+                           data-skill="{{ skill.id }}">
+                    <span class="score-display" id="disp-{{ skill.id }}">{{ user_ratings.get(skill.id, 0) }}</span>
+                </div>
+                <div class="skill-rating-bottom">
+                    <span class="rating-label" id="lbl-{{ skill.id }}">
+                        {% if user_ratings.get(skill.id) is not none %}
+                        已评 {{ user_ratings[skill.id] }} 分
+                        {% else %}
+                        未评分
+                        {% endif %}
+                    </span>
+                    <button class="btn btn-sm btn-detail" data-skill="{{ skill.id }}">查看AI评分</button>
+                    <a class="btn btn-sm btn-source" href="/skill-viewer/?skill={{ skill.id }}" target="_blank">查看skill</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box" id="modalBox">
+        <div class="modal-header">
+            <span class="modal-title" id="modalTitle">机器评分详情</span>
+            <button class="modal-close" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <div class="modal-loading">加载中...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var saveTimers = {};
+
+    function saveRating(skillId, score) {
+        var label = document.getElementById('lbl-' + skillId);
+        if (!label) return;
+        label.textContent = '保存中...';
+        label.style.color = '';
+
+        fetch('/rate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'skill_id=' + encodeURIComponent(skillId) + '&score=' + score
+        }).then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                label.textContent = '已评 ' + score + ' 分';
+                label.style.color = '';
+            } else {
+                label.textContent = '保存失败';
+                label.style.color = '#f56c6c';
+            }
+        }).catch(function() {
+            label.textContent = '网络错误';
+            label.style.color = '#f56c6c';
+        });
+    }
+
+    var sliders = document.querySelectorAll('.score-slider');
+    for (var i = 0; i < sliders.length; i++) {
+        (function(slider) {
+            var skillId = slider.getAttribute('data-skill');
+            var display = document.getElementById('disp-' + skillId);
+            var label = document.getElementById('lbl-' + skillId);
+
+            if (!display || !label) return;
+
+            slider.addEventListener('input', function() {
+                var v = parseInt(slider.value, 10);
+                if (isNaN(v)) v = 0;
+                display.textContent = v;
+
+                label.textContent = '等待保存...';
+                label.style.color = '';
+
+                clearTimeout(saveTimers[skillId]);
+                saveTimers[skillId] = setTimeout(function() {
+                    saveRating(skillId, v);
+                }, 600);
+            });
+
+            slider.addEventListener('change', function() {
+                var v = parseInt(slider.value, 10);
+                if (isNaN(v)) v = 0;
+                clearTimeout(saveTimers[skillId]);
+                saveRating(skillId, v);
+            });
+        })(sliders[i]);
+    }
+
+})();
+</script>
+
+<script>
+(function() {
+    var overlay = document.getElementById('modalOverlay');
+    var modalBody = document.getElementById('modalBody');
+    var modalTitle = document.getElementById('modalTitle');
+
+    document.getElementById('modalClose').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closeModal();
+    });
+
+    function closeModal() {
+        overlay.classList.remove('show');
+    }
+
+    function showModal() {
+        overlay.classList.add('show');
+    }
+
+    var detailBtns = document.querySelectorAll('.btn-detail');
+    for (var i = 0; i < detailBtns.length; i++) {
+        detailBtns[i].addEventListener('click', function() {
+            var skillId = this.getAttribute('data-skill');
+            var skillName = this.closest('.skill-card').querySelector('.skill-name').textContent;
+            modalTitle.textContent = '机器评分 - ' + skillName;
+            modalBody.innerHTML = '<div class="modal-loading">加载中...</div>';
+            showModal();
+
+            fetch('/api/machine-score/' + encodeURIComponent(skillId))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    modalBody.innerHTML = '<div class="modal-error">加载失败</div>';
+                    return;
+                }
+                modalBody.innerHTML = buildModalContent(data);
+            })
+            .catch(function() {
+                modalBody.innerHTML = '<div class="modal-error">网络错误</div>';
+            });
+        });
+    }
+
+    function buildModalContent(data) {
+        var html = '';
+
+        if (data.total_score != null) {
+            html += '<div class="modal-overall-row">';
+            html += '<div class="overall-label">机器评分总分</div>';
+            html += '<div class="overall-value">' + data.total_score + '<span class="overall-max">/70</span></div>';
+            html += '<div class="overall-breakdown">';
+            html += '<span class="bd-pill bd-l1">第一层 结构合规: ' + (data.l1 ? data.l1.score : '-') + '/25</span>';
+            html += '<span class="bd-pill bd-l2">第二层 运行维度: ' + (data.l2_total != null ? data.l2_total : '-') + '/45</span>';
+            html += '</div></div>';
+        }
+
+        if (data.l1 && data.l1.items && data.l1.items.length > 0) {
+            html += '<div class="modal-section">';
+            html += '<div class="section-title"><span class="section-tag tag-l1">第一层</span>结构合规检查 <span class="section-meta">' + data.l1.score + ' / ' + data.l1.max + ' 分</span></div>';
+            html += '<div class="l1-grid">';
+            for (var k = 0; k < data.l1.items.length; k++) {
+                var item = data.l1.items[k];
+                var statusClass = 'l1-' + item.status;
+                html += '<div class="l1-card ' + statusClass + '">';
+                html += '<div class="l1-card-top">';
+                html += '<span class="l1-name">' + escapeHtml(item.name) + '</span>';
+                html += '<span class="l1-score-pill">' + item.earned + ' / ' + item.weight + '</span>';
+                html += '</div>';
+                html += '<div class="l1-card-bottom">';
+                html += '<span class="l1-status-badge ' + statusClass + '">' + escapeHtml(item.status_cn) + '</span>';
+                html += '<span class="l1-detail">' + escapeHtml(item.detail) + '</span>';
+                html += '</div></div>';
+            }
+            html += '</div></div>';
+        }
+
+        if (data.grading) {
+            html += '<div class="modal-section">';
+            html += '<div class="section-title"><span class="section-tag tag-l2">第二层</span>运行维度概览</div>';
+            html += '<div class="modal-summary-row">';
+            html += '<div class="grading-stat"><span class="stat-label">质量分</span><span class="stat-value quality">' + data.grading.quality_score + '</span></div>';
+            html += '<div class="grading-stat"><span class="stat-label">有 Skill 通过率</span><span class="stat-value with-skill">' + data.grading.avg_with_rate + '%</span></div>';
+            html += '<div class="grading-stat"><span class="stat-label">无 Skill 通过率</span><span class="stat-value without-skill">' + data.grading.avg_without_rate + '%</span></div>';
+            html += '<div class="grading-stat"><span class="stat-label">提升幅度</span><span class="stat-value delta">+' + data.grading.avg_delta + '%</span></div>';
+            html += '</div></div>';
+        }
+
+        if (data.evals && data.evals.length > 0) {
+            html += '<div class="modal-section">';
+            html += '<div class="section-title">评估场景对比</div>';
+            html += '<table class="evals-table"><thead><tr><th>评估场景</th><th>有 Skill</th><th>无 Skill</th><th>提升 Δ</th><th>对比</th></tr></thead><tbody>';
+            for (var i = 0; i < data.evals.length; i++) {
+                var ev = data.evals[i];
+                html += '<tr>';
+                html += '<td><span class="eval-type-tag">' + escapeHtml(ev.type_name) + '</span></td>';
+                html += '<td><span class="rate-val with">' + ev.with_rate + '%</span></td>';
+                html += '<td><span class="rate-val without">' + ev.without_rate + '%</span></td>';
+                html += '<td><span class="rate-val delta">+' + ev.delta + '%</span></td>';
+                html += '<td><div class="compare-bar-wrap"><div class="compare-bar with-bar" style="width:' + ev.with_rate + '%"></div><div class="compare-bar without-bar" style="width:' + ev.without_rate + '%"></div></div></td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+
+        if (data.dim_data && data.dim_data.length > 0) {
+            html += '<div class="modal-section">';
+            html += '<div class="section-title"><span class="section-tag tag-l2">第二层</span>十维度评分';
+            if (data.l2_total != null) {
+                html += '<span class="section-meta">总分 ' + data.l2_total + ' / 45</span>';
+            }
+            html += '</div>';
+            html += '<div class="dim-grid">';
+            for (var j = 0; j < data.dim_data.length; j++) {
+                var dim = data.dim_data[j];
+                var pct = dim.pct || 0;
+                var barCls = 'dim-bar-high';
+                if (pct < 50) barCls = 'dim-bar-low';
+                else if (pct < 80) barCls = 'dim-bar-mid';
+                html += '<div class="dim-item">';
+                html += '<div class="dim-row1">';
+                html += '<span class="dim-name">' + escapeHtml(dim.name) + '</span>';
+                html += '<span class="dim-score">' + dim.weighted.toFixed(1) + ' <span class="dim-weight">/ ' + dim.raw + ' × ' + dim.weight + '</span></span>';
+                html += '</div>';
+                html += '<div class="dim-bar-wrap"><div class="dim-bar ' + barCls + '" style="width:' + pct + '%"></div></div>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+
+        return html;
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && overlay.classList.contains('show')) {
+            closeModal();
+        }
+    });
+})();
+</script>
+{% endblock %}

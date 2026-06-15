@@ -105,5 +105,9 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
     },
     settings: {
         setUseEmbeddedBrowser: (value) => ipcRenderer.invoke("settings.setUseEmbeddedBrowser", value)
-    }
+    },
+    storage: {
+        loadAll: () => ipcRenderer.invoke("storage.loadAll"),
+        save: (payload) => ipcRenderer.invoke("storage.save", payload),
+    },
 });

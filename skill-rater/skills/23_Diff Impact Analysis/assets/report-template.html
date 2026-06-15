@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__REPORT_TITLE__</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-secondary: #fafafa;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+  --border: rgba(0,0,0,0.06);
+  --border-strong: rgba(0,0,0,0.12);
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --success: #34c759;
+  --warning: #ff9f0a;
+  --danger: #ff3b30;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  --font: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 960px; margin: 0 auto; padding: 3rem 2rem 6rem; }
+
+/* Header */
+.header { margin-bottom: 2.5rem; text-align: center; }
+.header h1 {
+  font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--text); margin-bottom: 0.4rem;
+}
+.header-meta {
+  display: flex; justify-content: center; gap: 1.5rem;
+  color: var(--text-secondary); font-size: 0.82rem; font-weight: 500;
+}
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  transition: box-shadow 0.3s;
+}
+.card:hover { box-shadow: var(--shadow-md); }
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-secondary);
+}
+.card-header h2 {
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 0.2rem 0.6rem; border-radius: 100px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.pill-blue { background: rgba(0,113,227,0.1); color: var(--accent); }
+.pill-red { background: rgba(255,59,48,0.1); color: var(--danger); }
+.pill-orange { background: rgba(255,159,10,0.1); color: var(--warning); }
+
+/* Feature Table */
+.ftable { width: 100%; border-collapse: collapse; }
+.ftable th {
+  padding: 0.7rem 1.2rem; text-align: left;
+  font-size: 0.72rem; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  background: var(--surface-secondary);
+}
+.ftable td {
+  padding: 0.75rem 1.2rem; font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.ftable tr:hover td { background: var(--surface-secondary); }
+.code-tag {
+  font-family: var(--font-mono); font-size: 0.78rem;
+  color: var(--accent); background: rgba(0,113,227,0.06);
+  padding: 0.15rem 0.4rem; border-radius: 4px;
+}
+
+/* Risk Items */
+.risk-list { padding: 0; }
+.risk-row {
+  display: flex; align-items: flex-start; gap: 0.8rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  transition: background 0.15s;
+  cursor: pointer;
+}
+.risk-row:first-child { border-top: none; }
+.risk-row:hover { background: var(--surface-secondary); }
+.risk-row.checked { background: #f0fdf4; }
+
+.checkbox-wrap {
+  position: relative; width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px;
+}
+.checkbox-wrap input {
+  appearance: none; -webkit-appearance: none;
+  width: 22px; height: 22px;
+  border: 2px solid var(--border-strong); border-radius: 6px;
+  cursor: pointer; transition: all 0.2s;
+  background: var(--surface);
+}
+.checkbox-wrap input:checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.checkbox-wrap input:checked::after {
+  content: ''; position: absolute; top: 5px; left: 8px;
+  width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.checkbox-wrap input:hover { border-color: var(--accent); }
+
+.risk-body { flex: 1; min-width: 0; }
+.risk-title-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+.risk-name { font-size: 0.9rem; font-weight: 500; color: var(--text); }
+.sev {
+  font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.45rem;
+  border-radius: 4px; text-transform: uppercase;
+}
+.sev-h { background: rgba(255,59,48,0.1); color: var(--danger); }
+.sev-m { background: rgba(255,159,10,0.1); color: #cc7a00; }
+.sev-l { background: rgba(52,199,89,0.1); color: #1a8d38; }
+.risk-desc { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+.risk-desc strong { color: var(--text); font-weight: 500; }
+.risk-desc p { margin-top: 0.2rem; }
+
+/* Sticky Footer */
+.action-footer {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--border);
+  padding: 0.8rem 2rem;
+  display: flex; align-items: center; justify-content: center; gap: 2rem;
+  z-index: 100;
+}
+.action-footer .stat {
+  font-size: 0.85rem; color: var(--text-secondary);
+}
+.action-footer .stat strong {
+  color: var(--accent); font-weight: 700; font-size: 1rem;
+}
+.btn {
+  padding: 0.55rem 1.3rem; border: none; border-radius: 100px;
+  font-family: var(--font); font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-outline {
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+}
+.btn-outline:hover { background: var(--surface-secondary); color: var(--text); }
+.btn-filled {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 2px 8px rgba(0,113,227,0.25);
+}
+.btn-filled:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,113,227,0.3); }
+
+/* Toast */
+.toast {
+  position: fixed; top: 1.5rem; left: 50%; transform: translateX(-50%) translateY(-100px);
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--success); padding: 0.6rem 1.2rem; border-radius: 100px;
+  font-size: 0.82rem; font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+  z-index: 200;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 768px) {
+  .container { padding: 1.5rem 1rem 5rem; }
+  .header h1 { font-size: 1.5rem; }
+  .action-footer { padding: 0.6rem 1rem; gap: 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>__REPORT_TITLE__</h1>
+    <div class="header-meta">
+      <span>__TIMESTAMP__</span>
+      <span>__FILE_COUNT__ 文件变更</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>📋 修改内容与实现功能</h2>
+      <span class="pill pill-blue">__FEATURE_COUNT__ 项</span>
+    </div>
+    <table class="ftable">
+      <thead><tr><th>#</th><th>文件</th><th>概要</th><th>功能</th></tr></thead>
+      <tbody>__FEATURES_ROWS__</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>⚠️ 二次不具合</h2>
+      <span class="pill pill-red">回归风险</span>
+    </div>
+    <div class="risk-list" id="regression-list">__REGRESSION_ITEMS__</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>🔍 類似不具合</h2>
+      <span class="pill pill-orange">同类隐患</span>
+    </div>
+    <div class="risk-list" id="similar-list">__SIMILAR_ITEMS__</div>
+  </div>
+</div>
+
+<div class="action-footer">
+  <span class="stat">已选 <strong id="count">0</strong> 项</span>
+  <button class="btn btn-outline" onclick="selectAll()">全选</button>
+  <button class="btn btn-outline" onclick="clearAll()">清除</button>
+  <button class="btn btn-filled" onclick="submitFixes()">提交修正 →</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SERVER = 'http://127.0.0.1:9517';
+function updateCount() {
+  const n = document.querySelectorAll('.fix-cb:checked').length;
+  document.getElementById('count').textContent = n;
+  document.querySelectorAll('.risk-row').forEach(r => {
+    const cb = r.querySelector('.fix-cb');
+    if (cb) r.classList.toggle('checked', cb.checked);
+  });
+}
+function selectAll() { document.querySelectorAll('.fix-cb').forEach(c => c.checked = true); updateCount(); }
+function clearAll() { document.querySelectorAll('.fix-cb').forEach(c => c.checked = false); updateCount(); }
+function showToast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+async function submitFixes() {
+  const sel = [], dis = [];
+  document.querySelectorAll('.fix-cb').forEach(cb => {
+    const o = { id: cb.dataset.id, type: cb.dataset.type, description: cb.dataset.desc, file: cb.dataset.file || '', suggestion: cb.dataset.suggestion || '' };
+    cb.checked ? sel.push(o) : dis.push(o);
+  });
+  if (!sel.length) { alert('请至少选择一项'); return; }
+  const payload = { action:'fix', selections:sel, dismissed:dis, timestamp:new Date().toISOString() };
+  try {
+    const res = await fetch(SERVER + '/submit', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast('✓ 已提交 ' + sel.length + ' 项，AI 正在自动修正...');
+      const btn = document.querySelector('.btn-filled');
+      btn.disabled = true;
+      btn.textContent = '⏳ AI 修正中，完成后自动刷新...';
+      // 轮询等待新报告就绪（服务器重启后会再次可访问）
+      pollForNewReport();
+    } else { throw new Error('Server error'); }
+  } catch(e) {
+    // 服务器不可用时降级为文件下载
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'fix-selections.json'; a.click();
+    showToast('⚠ 服务器不可用，已降级为文件下载');
+  }
+}
+function pollForNewReport() {
+  let attempts = 0;
+  const maxAttempts = 60; // 最多等 60 秒
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > maxAttempts) { clearInterval(interval); showToast('⚠ 等待超时，请手动刷新'); return; }
+    try {
+      const res = await fetch(SERVER + '/report', { method: 'HEAD' });
+      if (res.ok) { clearInterval(interval); showToast('✓ 新报告就绪，正在刷新...'); setTimeout(() => location.reload(), 800); }
+    } catch(e) { /* 服务器还没重启，继续等 */ }
+  }, 1000);
+}
+document.addEventListener('change', e => { if (e.target.classList.contains('fix-cb')) updateCount(); });
+document.querySelectorAll('.risk-row').forEach(row => {
+  row.addEventListener('click', e => {
+    if (e.target.type === 'checkbox') return;
+    const cb = row.querySelector('.fix-cb'); if (cb) { cb.checked = !cb.checked; updateCount(); }
+  });
+});
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'a') { e.preventDefault(); selectAll(); }
+  if (e.key === 'Escape') clearAll();
+  if (e.ctrlKey && e.key === 'Enter') submitFixes();
+});
+</script>
+</body>
+</html>

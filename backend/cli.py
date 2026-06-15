@@ -512,6 +512,15 @@ def run_adb(args: list[str]) -> str:
     return decode_adb_output(completed.stdout).strip()
 
 
+def run_adb_bytes(args: list[str]) -> bytes:
+    completed = subprocess.run(
+        [ADB_EXECUTABLE, *args],
+        check=True,
+        capture_output=True,
+    )
+    return completed.stdout
+
+
 def read_prop(device_id: str, prop: str) -> str:
     return run_adb(["-s", device_id, "shell", "getprop", prop]).strip()
 

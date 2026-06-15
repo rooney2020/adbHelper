@@ -1,4 +1,4 @@
-import { Menu, app, BrowserWindow, dialog, ipcMain, protocol, shell } from "electron";
+import { Menu, app, BrowserWindow, dialog, ipcMain, protocol, shell, Tray, nativeImage } from "electron";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
@@ -7,12 +7,15 @@ import { execFileDecoded, decodeBuffer } from "../shared/execFileDecoded.js";
 import { readFile, writeFile, mkdir, readdir, stat as fsStat, open as fsOpen } from "node:fs/promises";
 import { statSync } from "node:fs";
 import { clearLogcatSession, exportLogcatSession, getLogcatSessionState, startLogcatSession, stopAllLogcatSessions, stopLogcatSession, updateLogcatSessionFilters } from "../shared/logcatRuntime.js";
+import { startPerfApiServer } from "./perf-api-server.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const execFileAsync = execFileDecoded;
 const pythonExecutable = process.env.ADB_HELPER_PYTHON ?? (process.platform === "win32" ? "python" : "python3");
 const backendCliPath = join(__dirname, "../../backend/cli.py");
 const workspaceRoot = join(__dirname, "../..");
+// Perf API server port (production mode)
+let perfApiPort = 0;
 // Winscope proxy process tracking for auto-recovery
 let _winscopeProxyProcess = null;
 let _winscopeProxyRunning = false;
@@ -591,7 +594,7 @@ function registerIpcHandlers() {
             void child.loadURL(`${devServerUrl}?popout=${payload.panelId}`);
         }
         else {
-            void child.loadFile(join(__dirname, "../../dist/index.html"), { query: { popout: String(payload.panelId) } });
+            void child.loadURL(`http://127.0.0.1:${perfApiPort}/?popout=${payload.panelId}`);
         }
         return { status: "ok" };
     });
@@ -629,6 +632,34 @@ function registerIpcHandlers() {
         try {
             await mkdir(dirname(macroTasksFilePath), { recursive: true });
             await writeFile(macroTasksFilePath, JSON.stringify(payload.tasks, null, 2), "utf-8");
+            return { status: "ok" };
+        }
+        catch (err) {
+            return { status: "error", message: err instanceof Error ? err.message : String(err) };
+        }
+    });
+    // ── Unified storage: single file for all app data ──────────────────────
+    const appDataPath = join(__dirname, "../../backend/state/app-data.json");
+    ipcMain.handle("storage.loadAll", async () => {
+        try {
+            const data = await readFile(appDataPath, "utf-8");
+            return { status: "ok", data: JSON.parse(data) };
+        }
+        catch {
+            return { status: "ok", data: {} };
+        }
+    });
+    ipcMain.handle("storage.save", async (_event, payload) => {
+        try {
+            await mkdir(dirname(appDataPath), { recursive: true });
+            let all = {};
+            try {
+                const existing = await readFile(appDataPath, "utf-8");
+                all = JSON.parse(existing);
+            }
+            catch { /* file doesn't exist yet */ }
+            all[payload.key] = payload.value;
+            await writeFile(appDataPath, JSON.stringify(all, null, 2), "utf-8");
             return { status: "ok" };
         }
         catch (err) {
@@ -1197,14 +1228,60 @@ const SIZE_MB = ${JSON.stringify(sizeMB)};
         }
     });
 }
+let tray = null;
+function createTray() {
+    const iconPath = join(__dirname, "assets", "icon-64.png");
+    const trayIcon = nativeImage.createFromPath(iconPath);
+    tray = new Tray(trayIcon);
+    tray.setToolTip("ADB Helper");
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: "显示窗口",
+            click: () => {
+                const wins = BrowserWindow.getAllWindows();
+                if (wins.length > 0) {
+                    wins[0].show();
+                    wins[0].focus();
+                }
+            },
+        },
+        {
+            label: "隐藏窗口",
+            click: () => {
+                const wins = BrowserWindow.getAllWindows();
+                if (wins.length > 0)
+                    wins[0].hide();
+            },
+        },
+        { type: "separator" },
+        {
+            label: "退出",
+            click: () => { app.quit(); },
+        },
+    ]);
+    tray.setContextMenu(contextMenu);
+    tray.on("click", () => {
+        const wins = BrowserWindow.getAllWindows();
+        if (wins.length > 0) {
+            if (wins[0].isVisible()) {
+                wins[0].hide();
+            }
+            else {
+                wins[0].show();
+                wins[0].focus();
+            }
+        }
+    });
+}
 function createWindow() {
+    const iconPath = join(__dirname, "assets", "icon-256.png");
     const window = new BrowserWindow({
         width: 1440,
         height: 900,
         minWidth: 1180,
         minHeight: 760,
         title: "ADB Helper",
-        autoHideMenuBar: true,
+        icon: iconPath,
         webPreferences: {
             preload: join(__dirname, "preload.js"),
             contextIsolation: true,
@@ -1227,7 +1304,7 @@ function createWindow() {
         window.webContents.openDevTools({ mode: "detach" });
         return;
     }
-    void window.loadFile(join(__dirname, "../../dist/index.html"));
+    void window.loadURL(`http://127.0.0.1:${perfApiPort}/`);
 }
 // Must be called before app.whenReady
 protocol.registerSchemesAsPrivileged([
@@ -1583,7 +1660,11 @@ svg + span.material-icons {
         }
     });
     registerIpcHandlers();
+    // Start perf API server for production mode
+    perfApiPort = await startPerfApiServer();
+    console.log(`[Perf API] Server started on port ${perfApiPort}`);
     createWindow();
+    createTray();
     app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
@@ -1594,5 +1675,11 @@ app.on("window-all-closed", () => {
     stopAllLogcatSessions();
     if (process.platform !== "darwin") {
         app.quit();
+    }
+});
+app.on("before-quit", () => {
+    if (tray) {
+        tray.destroy();
+        tray = null;
     }
 });

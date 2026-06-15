@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}机器评分数据{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="page-title">机器评分数据（Layer2 评估结果）</div>
+    <div class="page-subtitle">
+        共 <strong>{{ results|length }}</strong> 个 Skill 的原始机器评分数据
+    </div>
+
+    {% if summary %}
+    <div class="summary-card">
+        <div class="summary-title">评估概览</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <span class="summary-label">总 Skill 数</span>
+                <span class="summary-value">{{ summary.total_skills }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">加权平均分</span>
+                <span class="summary-value">{{ "%.1f"|format(summary.avg_weighted_total) }} / {{ summary.max_possible }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">满分</span>
+                <span class="summary-value">{{ summary.max_possible }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for r in results %}
+    <div class="grading-card" id="skill-{{ r.id }}">
+        <div class="grading-header">
+            <div>
+                <div class="grading-name">{{ r.id }}. {{ r.name }}</div>
+                <div class="grading-desc">{{ r.description[:80] }}{% if r.description|length > 80 %}...{% endif %}</div>
+            </div>
+            {% if r.grading %}
+            <div class="grading-summary-row">
+                <div class="grading-stat">
+                    <span class="stat-label">质量分</span>
+                    <span class="stat-value quality">{{ "%.0f"|format(r.grading.quality_score * 100) }}</span>
+                </div>
+                <div class="grading-stat">
+                    <span class="stat-label">有 Skill 通过率</span>
+                    <span class="stat-value with-skill">{{ "%.0f"|format(r.grading.avg_with_rate * 100) }}%</span>
+                </div>
+                <div class="grading-stat">
+                    <span class="stat-label">无 Skill 通过率</span>
+                    <span class="stat-value without-skill">{{ "%.0f"|format(r.grading.avg_without_rate * 100) }}%</span>
+                </div>
+                <div class="grading-stat">
+                    <span class="stat-label">提升幅度</span>
+                    <span class="stat-value delta">{{ "%.0f"|format(r.grading.avg_delta * 100) }}%</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if r.evals %}
+        <table class="evals-table">
+            <thead>
+                <tr>
+                    <th>评估场景</th>
+                    <th>有 Skill 通过率</th>
+                    <th>无 Skill 通过率</th>
+                    <th>提升 Δ</th>
+                    <th>得分柱状</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in r.evals %}
+                <tr>
+                    <td><span class="eval-type-tag">{{ ev.type_name }}</span></td>
+                    <td><span class="rate-val with">{{ ev.with_rate }}%</span></td>
+                    <td><span class="rate-val without">{{ ev.without_rate }}%</span></td>
+                    <td><span class="rate-val delta">+{{ ev.delta }}%</span></td>
+                    <td>
+                        <div class="compare-bar-wrap">
+                            <div class="compare-bar with-bar" style="width:{{ ev.with_rate }}%"></div>
+                            <div class="compare-bar without-bar" style="width:{{ ev.without_rate }}%"></div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if r.dim_data %}
+        <div class="dim-section">
+            <div class="dim-title">十维度评分</div>
+            <div class="dim-grid">
+                {% for dim in r.dim_data %}
+                <div class="dim-item">
+                    <div class="dim-name">{{ dim.name }}</div>
+                    <div class="dim-bar-wrap">
+                        <div class="dim-bar" style="width:{{ (dim.weighted / dim.weight / 5 * 100)|round(1) }}%"></div>
+                    </div>
+                    <div class="dim-score">{{ "%.1f"|format(dim.weighted) }} <span class="dim-weight">×{{ dim.weight }}</span></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% if r.total_weighted > 0 %}
+            <div class="dim-total">
+                加权总分: <strong>{{ "%.1f"|format(r.total_weighted) }}</strong> / {{ r.max_possible }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <div style="text-align:center;margin-top:24px">
+        <a href="{{ url_for('index') }}" class="btn">返回评分</a>
+        <a href="{{ url_for('ranking') }}" class="btn">查看排行榜</a>
+    </div>
+</div>
+{% endblock %}

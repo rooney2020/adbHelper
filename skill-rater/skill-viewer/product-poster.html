@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skill Viewer 产品首屏</title>
+    <style>
+      :root {
+        --bg: #050607;
+        --panel: #17191d;
+        --panel-soft: #1d2026;
+        --line: rgba(84, 255, 180, 0.24);
+        --line-soft: rgba(255, 255, 255, 0.08);
+        --ink: #f5f7fb;
+        --muted: #a1acba;
+        --green: #35f29d;
+        --green-deep: #14c872;
+        --shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+        --font-display: "Noto Serif SC", "Source Han Serif SC", serif;
+        --font-body: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        color: var(--ink);
+        font-family: var(--font-body);
+        background:
+          radial-gradient(circle at 50% -10%, rgba(53, 242, 157, 0.08), transparent 30%),
+          linear-gradient(180deg, #08090b 0%, var(--bg) 100%);
+      }
+
+      .page {
+        width: min(1440px, calc(100vw - 24px));
+        margin: 0 auto;
+        padding: 0 18px 28px;
+      }
+
+      .nav,
+      .hero,
+      .feature-grid,
+      .language-band,
+      .footer {
+        width: min(1320px, 100%);
+        margin: 0 auto;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 12px 0;
+      }
+
+      .nav-left,
+      .nav-right,
+      .brand,
+      .menu,
+      .hero-actions,
+      .language-list,
+      .footer {
+        display: flex;
+      }
+
+      .nav-left,
+      .nav-right,
+      .brand,
+      .menu {
+        align-items: center;
+        gap: 16px;
+      }
+
+      .brand-mark {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: linear-gradient(135deg, var(--green), #6dffc5);
+        box-shadow: 0 0 0 7px rgba(53, 242, 157, 0.08);
+      }
+
+      .brand-name,
+      .hero h1,
+      .card-title,
+      .language-title,
+      .footer-title {
+        font-family: var(--font-display);
+      }
+
+      .brand-name {
+        font-size: 22px;
+      }
+
+      .menu-item,
+      .nav-link,
+      .hero-copy,
+      .card-copy,
+      .screen-line,
+      .language-copy,
+      .language-list span,
+      .footer-copy {
+        color: var(--muted);
+      }
+
+      .menu-item,
+      .nav-link,
+      .hero-link,
+      .card-label,
+      .language-copy,
+      .footer-copy {
+        font-size: 13px;
+      }
+
+      .menu-item,
+      .nav-link {
+        opacity: 0.92;
+      }
+
+      .nav-button,
+      .hero-button,
+      .hero-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 18px;
+        border-radius: 10px;
+      }
+
+      .nav-button,
+      .hero-button {
+        color: #07110b;
+        background: linear-gradient(135deg, var(--green), var(--green-deep));
+        font-weight: 700;
+        box-shadow: 0 16px 32px rgba(53, 242, 157, 0.18);
+        text-decoration: none;
+      }
+
+      .hero {
+        padding: 90px 0 44px;
+        text-align: center;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(74px, 8.6vw, 132px);
+        line-height: 1;
+        letter-spacing: -0.04em;
+      }
+
+      .hero-copy {
+        width: min(820px, 100%);
+        margin: 28px auto 0;
+        font-size: clamp(18px, 2vw, 24px);
+        line-height: 1.72;
+      }
+
+      .hero-actions {
+        justify-content: center;
+        gap: 18px;
+        margin-top: 30px;
+      }
+
+      .hero-link {
+        color: var(--muted);
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+
+      .feature-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .feature-card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line-soft);
+        border-radius: 14px;
+        background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
+        box-shadow: var(--shadow);
+      }
+
+      .feature-card::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, rgba(53, 242, 157, 0.9) 18%, rgba(53, 242, 157, 0.28) 76%, transparent 100%);
+      }
+
+      .feature-card.large,
+      .feature-card.small {
+        padding: 22px;
+        min-height: auto;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .card-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .card-label::before,
+      .language-list span::before,
+      .screen-list li::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--green);
+        box-shadow: 0 0 16px rgba(53, 242, 157, 0.44);
+      }
+
+      .card-title {
+        margin: 18px 0 8px;
+        font-size: clamp(30px, 4vw, 44px);
+        line-height: 1.04;
+      }
+
+      .card-copy {
+        max-width: 760px;
+        margin: 0;
+        line-height: 1.7;
+      }
+
+      .card-copy.tight {
+        max-width: 620px;
+      }
+
+      .card-copy.strong {
+        max-width: 820px;
+        font-size: 16px;
+      }
+
+      .real-shot-wrap,
+      .real-shot-card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .real-shot-wrap {
+        margin-top: 18px;
+      }
+
+      .real-shot-card {
+        margin-top: 14px;
+      }
+
+      .real-shot,
+      .real-shot-tall {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .real-shot-wrap.hero-shot {
+        margin-top: 22px;
+        border-color: rgba(53, 242, 157, 0.14);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(8, 10, 12, 0.16)),
+          radial-gradient(circle at 50% 110%, rgba(53, 242, 157, 0.12), transparent 48%);
+      }
+
+      .shot-meta,
+      .shot-note-list {
+        display: flex;
+      }
+
+      .shot-meta {
+        gap: 10px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .shot-meta-item,
+      .shot-note {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .shot-note-list {
+        gap: 12px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+
+      .shot-badges,
+      .proof-strip,
+      .proof-item,
+      .mini-metric,
+      .mini-links {
+        display: flex;
+      }
+
+      .shot-badges {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 18px;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .shot-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 999px;
+        background: rgba(7, 9, 12, 0.72);
+        backdrop-filter: blur(14px);
+        color: rgba(245, 247, 251, 0.94);
+        font-size: 12px;
+      }
+
+      .shot-badge::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--green);
+        box-shadow: 0 0 14px rgba(53, 242, 157, 0.42);
+      }
+
+      .proof-strip {
+        gap: 12px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+
+      .proof-item {
+        flex: 1 1 220px;
+        flex-direction: column;
+        gap: 6px;
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .proof-item strong,
+      .mini-metric strong {
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .proof-item span,
+      .mini-metric span,
+      .mini-links span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .screen-shell {
+        margin-top: 18px;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(10, 13, 17, 0.84);
+      }
+
+      .screen-top,
+      .screen-toolbar,
+      .screen-content,
+      .screen-stack,
+      .card-stack,
+      .language-list {
+        display: flex;
+      }
+
+      .screen-top,
+      .screen-toolbar {
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .screen-top {
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .screen-toolbar {
+        gap: 8px;
+      }
+
+      .screen-toolbar span {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .screen-tag,
+      .screen-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .screen-content {
+        gap: 14px;
+      }
+
+      .screen-sidebar,
+      .screen-main,
+      .screen-phone,
+      .mini-screen,
+      .mini-card {
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .screen-sidebar {
+        width: 26%;
+        padding: 14px;
+      }
+
+      .screen-main {
+        flex: 1;
+        padding: 14px;
+      }
+
+      .screen-phone {
+        width: 22%;
+        padding: 10px;
+        background: linear-gradient(180deg, rgba(53, 242, 157, 0.08), rgba(255, 255, 255, 0.02));
+      }
+
+      .screen-list {
+        display: grid;
+        gap: 10px;
+        margin: 12px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .screen-list li {
+        position: relative;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .screen-list li::before {
+        position: absolute;
+        left: 0;
+        top: 0.65em;
+      }
+
+      .screen-list li.active {
+        color: var(--ink);
+      }
+
+      .screen-line {
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .screen-line + .screen-line {
+        margin-top: 10px;
+      }
+
+      .screen-line.wide { width: 88%; }
+      .screen-line.mid { width: 72%; }
+      .screen-line.short { width: 58%; }
+
+      .screen-stack {
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .mini-chip-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+
+      .screen-pill.active {
+        color: rgba(53, 242, 157, 0.92);
+        background: rgba(53, 242, 157, 0.08);
+      }
+
+      .phone-frame {
+        width: 100%;
+        max-width: 170px;
+        margin: 0 auto;
+        padding: 10px;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: #f6f8fb;
+        color: #1e2b36;
+      }
+
+      .phone-notch {
+        width: 54px;
+        height: 8px;
+        margin: 0 auto 14px;
+        border-radius: 999px;
+        background: #0f1620;
+      }
+
+      .phone-title {
+        font-size: 11px;
+        color: #566170;
+      }
+
+      .phone-card {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: 0 6px 18px rgba(32, 46, 65, 0.08);
+      }
+
+      .phone-card strong {
+        display: block;
+        font-size: 11px;
+      }
+
+      .phone-card span {
+        display: block;
+        margin-top: 4px;
+        font-size: 10px;
+        color: #687482;
+      }
+
+      .card-stack {
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .mini-screen {
+        min-height: 138px;
+        padding: 14px;
+      }
+
+      .mini-card {
+        min-height: 144px;
+        padding: 16px;
+      }
+
+      .mini-metric {
+        align-items: flex-end;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .mini-links {
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .mini-links span {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .mini-visual,
+      .mindmap-visual {
+        margin-top: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .mini-visual {
+        padding: 12px;
+      }
+
+      .mini-visual .screen-line:nth-child(1) { width: 92%; }
+      .mini-visual .screen-line:nth-child(2) { width: 78%; }
+      .mini-visual .screen-line:nth-child(3) { width: 84%; }
+
+      .mindmap-visual {
+        padding: 14px 12px;
+      }
+
+      .mindmap-root,
+      .mindmap-row span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0 12px;
+        border-radius: 999px;
+        font-size: 11px;
+      }
+
+      .mindmap-root {
+        color: #07110b;
+        background: linear-gradient(135deg, var(--green), var(--green-deep));
+      }
+
+      .mindmap-row {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      .mindmap-row span {
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .mini-card h4,
+      .mini-screen h4 {
+        margin: 12px 0 8px;
+        font-size: 20px;
+      }
+
+      .mini-card p,
+      .mini-screen p {
+        margin: 0;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .language-band {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 18px;
+        margin-top: 18px;
+        padding: 20px 22px;
+        border: 1px solid var(--line-soft);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(22, 24, 29, 0.94), rgba(15, 17, 21, 0.98));
+      }
+
+      .language-band.compact {
+        grid-template-columns: 220px minmax(0, 1fr);
+        padding: 16px 20px;
+      }
+
+      .language-title {
+        font-size: 26px;
+      }
+
+      .language-copy {
+        margin-top: 8px;
+        line-height: 1.65;
+      }
+
+      .language-list {
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px 22px;
+      }
+
+      .language-list span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .footer {
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-top: 24px;
+        flex-wrap: wrap;
+      }
+
+      .footer-title {
+        font-size: 30px;
+      }
+
+      .footer-copy {
+        margin-top: 6px;
+      }
+
+      @media (max-width: 1180px) {
+        .screen-content,
+        .language-band {
+          grid-template-columns: 1fr;
+        }
+
+        .screen-content {
+          display: grid;
+        }
+
+        .screen-sidebar,
+        .screen-phone {
+          width: 100%;
+        }
+
+        .shot-badges {
+          position: static;
+          padding: 14px 14px 0;
+        }
+      }
+
+      @media (max-width: 820px) {
+        .page {
+          width: min(100vw - 10px, 100%);
+          padding: 0 4px 20px;
+        }
+
+        .nav,
+        .footer {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .nav-left,
+        .nav-right {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .hero {
+          padding-top: 60px;
+        }
+
+        .hero h1 {
+          font-size: clamp(50px, 14vw, 84px);
+        }
+
+        .hero-actions,
+        .menu,
+        .nav-right,
+        .language-list {
+          align-items: flex-start;
+          justify-content: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="nav">
+        <div class="nav-left">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <span class="brand-name">Skill Viewer</span>
+          </div>
+          <div class="menu">
+            <span class="menu-item">产品</span>
+            <span class="menu-item">场景</span>
+            <span class="menu-item">结构</span>
+          </div>
+        </div>
+        <div class="nav-right">
+          <a class="nav-button" href="./index.html">打开</a>
+        </div>
+      </header>
+
+      <section class="hero">
+        <h1>一眼读懂，协作无间</h1>
+        <p class="hero-copy">
+          Skill Viewer 把目录、章节、引用路径和导图整理成同一屏，让复杂 Skill 不再像一堆文件，而像一个可以直接展示、直接讲解、直接上手的产品界面。
+        </p>
+        <div class="hero-actions">
+          <a class="hero-button" href="./index.html">打开 Skill Viewer</a>
+        </div>
+      </section>
+
+      <section class="feature-grid">
+        <article class="feature-card large">
+          <div class="card-head">
+            <span class="card-label">主能力</span>
+          </div>
+          <h2 class="card-title">结构视图</h2>
+          <p class="card-copy strong">文件树、正文与引用导航并排铺开，不需要先解释操作流程，截图本身就能说明 Skill Viewer 为什么比直接翻文件更容易讲、也更容易上手。</p>
+
+          <div class="real-shot-wrap hero-shot">
+            <img class="real-shot" src="./assets/poster-assets/workspace-main-real.png" alt="Skill Viewer 结构视图真实界面截图" />
+            <div class="shot-badges">
+              <span class="shot-badge">文件树</span>
+              <span class="shot-badge">正文阅读</span>
+              <span class="shot-badge">引用导航</span>
+            </div>
+          </div>
+
+          <div class="proof-strip">
+            <div class="proof-item">
+              <strong>3 屏并列</strong>
+              <span>目录、正文、引用线索同一眼完成建立心智模型。</span>
+            </div>
+            <div class="proof-item">
+              <strong>零口头铺垫</strong>
+              <span>展示时不用先讲规则，界面已经把阅读动线摆出来。</span>
+            </div>
+            <div class="proof-item">
+              <strong>直接可讲解</strong>
+              <span>适合演示复杂 Skill、梳理入口、带新人快速熟悉结构。</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-card small">
+          <div class="card-head">
+            <span class="card-label">源码视图</span>
+          </div>
+          <h2 class="card-title">源码视图</h2>
+          <p class="card-copy tight">markdown代码块展示，语法高亮，阅读更清晰</p>
+
+          <div class="real-shot-wrap">
+            <img class="real-shot" src="./assets/poster-assets/sourcecode.png" alt="Skill Viewer 源码视图真实截图" />
+          </div>
+
+          <div class="shot-meta">
+            <span class="shot-meta-item">结构总览</span>
+            <span class="shot-meta-item">节点关系更完整</span>
+            <span class="shot-meta-item">适合演示讲解</span>
+          </div>
+
+          <div class="shot-note-list">
+            <span class="shot-note">讲结构先看导图</span>
+            <span class="shot-note">读细节再回正文</span>
+            <span class="shot-note">两种模式职责清晰</span>
+          </div>
+        </article>
+
+        <article class="feature-card small">
+          <div class="card-head">
+            <span class="card-label">导图总览</span>
+          </div>
+          <h2 class="card-title">细读与总览自然切换</h2>
+          <p class="card-copy tight">导图模式保留真实工作区宽度，不再被固定比例切掉关键节点。做讲解时先看全局结构，落到正文时再切回文档阅读，叙事顺序更顺。</p>
+
+          <div class="real-shot-wrap">
+            <img class="real-shot" src="./assets/poster-assets/mindmap-main-real.png" alt="Skill Viewer 思维导图模式真实截图" />
+          </div>
+
+          <div class="shot-meta">
+            <span class="shot-meta-item">结构总览</span>
+            <span class="shot-meta-item">节点关系更完整</span>
+            <span class="shot-meta-item">适合演示讲解</span>
+            <span class="shot-note">讲结构先看导图</span>
+            <span class="shot-note">读细节再回正文</span>
+            <span class="shot-note">两种模式职责清晰</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="language-band compact">
+        <div>
+          <div class="language-title">复杂 Skill 也能快读</div>
+          <div class="language-copy">适合上手、讲解和展示。</div>
+        </div>
+        <div class="language-list">
+          <span>目录结构</span>
+          <span>章节正文</span>
+          <span>引用资源</span>
+          <span>思维导图</span>
+          <span>历史访问</span>
+          <span>能力讲解</span>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div>
+          <div class="footer-title">Skill Viewer</div>
+          <div class="footer-copy">把 Skill 从文件集合，整理成可以直接亮相的产品界面。</div>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>

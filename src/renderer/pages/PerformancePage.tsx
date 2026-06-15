@@ -6,8 +6,7 @@ import Icon from "../components/Icon";
 type PerfTab =
   | "fps"
   | "startup"
-  | "cpu"
-  | "memory"
+  | "cpu-mem"
   | "traffic"
   | "battery"
   | "storage"
@@ -25,8 +24,7 @@ interface PerfTabItem {
 const PERF_TABS: PerfTabItem[] = [
   { id: "fps", label: "帧率", description: "实时帧率监控、卡顿检测、帧耗时分析" },
   { id: "startup", label: "启动耗时", description: "冷启动/温启动/热启动测量与统计" },
-  { id: "cpu", label: "CPU", description: "应用/系统 CPU 占用监控与线程分析" },
-  { id: "memory", label: "内存", description: "PSS/RSS 监控、泄漏检测、GC 统计" },
+  { id: "cpu-mem", label: "CPU & 内存", description: "CPU 占用 + PSS/RSS 内存监控" },
   { id: "traffic", label: "流量", description: "实时流量监控、后台流量统计" },
   { id: "battery", label: "电池", description: "功耗监控、唤醒锁、Alarm 统计" },
   { id: "storage", label: "存储 IO", description: "磁盘读写、数据库、SP 监控" },
@@ -269,7 +267,7 @@ function FpsPanel({ deviceId }: { deviceId: string | null }) {
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={monitoring} />
         {!monitoring ? (
           <button className="perf-btn perf-btn-primary" onClick={startMonitoring} disabled={!deviceId || !pkg}>
-            开始监控
+            {!deviceId || !pkg ? "请输入包名" : "开始监控"}
           </button>
         ) : (
           <button className="perf-btn perf-btn-danger" onClick={stopMonitoring}>
@@ -340,11 +338,33 @@ function StartupPanel({ deviceId }: { deviceId: string | null }) {
   const [count, setCount] = useState(5);
   const [results, setResults] = useState<StartupResult[]>([]);
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchingActivity, setFetchingActivity] = useState(false);
+
+  const fetchTopActivity = useCallback(async () => {
+    if (!deviceId) return;
+    setFetchingActivity(true);
+    try {
+      const resp = await fetch(`/api/adb-helper/perf-top-activity?deviceId=${encodeURIComponent(deviceId)}`);
+      const json = await resp.json();
+      if (json.status === "ok") {
+        if (json.package && !pkg) setPkg(json.package);
+        setActivity(json.activity);
+      } else {
+        setError(json.message || "获取 Activity 失败");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetchingActivity(false);
+    }
+  }, [deviceId, pkg]);
 
   const runTest = useCallback(async () => {
     if (!deviceId || !pkg) return;
     setRunning(true);
     setResults([]);
+    setError(null);
     for (let i = 0; i < count; i++) {
       try {
         const params = new URLSearchParams({ deviceId, package: pkg, type: testType });
@@ -353,10 +373,16 @@ function StartupPanel({ deviceId }: { deviceId: string | null }) {
         const json = await resp.json();
         if (json.status === "ok") {
           setResults((prev) => [...prev, { ...json, timestamp: Date.now() }]);
+        } else {
+          setError(json.message || "启动测试失败");
+          break;
         }
         // Wait between iterations
         if (i < count - 1) await new Promise((r) => setTimeout(r, 2000));
-      } catch { /* ignore */ }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        break;
+      }
     }
     setRunning(false);
   }, [deviceId, pkg, activity, testType, count]);
@@ -377,7 +403,12 @@ function StartupPanel({ deviceId }: { deviceId: string | null }) {
     <div className="perf-panel-content">
       <div className="perf-controls">
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={running} />
-        <input type="text" placeholder="Activity (可选)" value={activity} onChange={(e) => setActivity(e.target.value)} disabled={running} className="perf-input perf-input-sm" />
+        <div className="perf-input-group">
+          <input type="text" placeholder="Activity (可选)" value={activity} onChange={(e) => setActivity(e.target.value)} disabled={running} className="perf-input perf-input-sm" />
+          <button className="perf-btn perf-btn-outline" onClick={fetchTopActivity} disabled={running || fetchingActivity || !deviceId} title="获取当前前台 Activity">
+            {fetchingActivity ? "获取中..." : "获取"}
+          </button>
+        </div>
         <select value={testType} onChange={(e) => setTestType(e.target.value as typeof testType)} disabled={running} className="perf-select">
           <option value="cold">冷启动</option>
           <option value="warm">温启动</option>
@@ -388,7 +419,7 @@ function StartupPanel({ deviceId }: { deviceId: string | null }) {
           <input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Number(e.target.value))} disabled={running} className="perf-input-number" />
         </label>
         <button className="perf-btn perf-btn-primary" onClick={runTest} disabled={running || !deviceId || !pkg}>
-          {running ? `测试中 (${results.length}/${count})` : "开始测试"}
+          {running ? `测试中 (${results.length}/${count})` : (!deviceId || !pkg ? "请输入包名" : "开始测试")}
         </button>
       </div>
 
@@ -422,8 +453,21 @@ function StartupPanel({ deviceId }: { deviceId: string | null }) {
         </div>
       )}
 
-      {!running && results.length === 0 && (
+      {!running && results.length === 0 && !error && (
         <p className="perf-empty-hint">输入包名并选择启动类型后点击"开始测试"</p>
+      )}
+      {error && (
+        <div className="perf-error-box">
+          <span className="perf-error-icon">⚠</span>
+          <span>{error}</span>
+        </div>
+      )}
+      {/* Show raw output for debugging when startup returns null data */}
+      {!running && results.length > 0 && validResults.length === 0 && !error && (
+        <div className="perf-chart-area">
+          <h4>原始输出 (用于调试)</h4>
+          <pre className="perf-raw-output">{results.map((r) => r.raw || "(无输出)").join("\n---\n")}</pre>
+        </div>
       )}
     </div>
   );
@@ -435,12 +479,14 @@ function CpuMemPanel({ deviceId }: { deviceId: string | null }) {
   const [pkg, setPkg] = useState("");
   const [monitoring, setMonitoring] = useState(false);
   const [dataPoints, setDataPoints] = useState<CpuMemPoint[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const startMonitoring = useCallback(() => {
     if (!deviceId) return;
     setDataPoints([]);
+    setError(null);
     startTimeRef.current = Date.now();
     setMonitoring(true);
 
@@ -456,8 +502,12 @@ function CpuMemPanel({ deviceId }: { deviceId: string | null }) {
             cpuPercent: json.cpuPercent,
             totalPssKb: json.totalPssKb,
           }]);
+        } else {
+          setError(json.message || "获取数据失败");
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }, 2000);
   }, [deviceId, pkg]);
 
@@ -516,6 +566,7 @@ function CpuMemPanel({ deviceId }: { deviceId: string | null }) {
             {cpuPoints.slice(-60).map((dp, i) => (
               <div key={i} className="perf-fps-bar" style={{ height: `${Math.min(dp.cpuPercent ?? 0, 100)}%` }} title={`${Math.round(dp.time / 1000)}s: ${dp.cpuPercent}%`}>
                 <span className={`perf-fps-bar-inner ${(dp.cpuPercent ?? 0) > 80 ? "perf-fps-low" : (dp.cpuPercent ?? 0) > 50 ? "perf-fps-mid" : "perf-fps-high"}`} />
+                <span className="perf-bar-label">{dp.cpuPercent !== null ? `${Math.round(dp.cpuPercent)}%` : ""}</span>
               </div>
             ))}
           </div>
@@ -529,9 +580,11 @@ function CpuMemPanel({ deviceId }: { deviceId: string | null }) {
           <div className="perf-fps-chart">
             {memPoints.slice(-60).map((dp, i) => {
               const maxMem = Math.max(...memPoints.map((d) => d.totalPssKb ?? 1));
+              const memMb = Math.round((dp.totalPssKb ?? 0) / 1024);
               return (
-                <div key={i} className="perf-fps-bar" style={{ height: `${((dp.totalPssKb ?? 0) / maxMem) * 100}%` }} title={`${Math.round(dp.time / 1000)}s: ${Math.round((dp.totalPssKb ?? 0) / 1024)} MB`}>
+                <div key={i} className="perf-fps-bar" style={{ height: `${((dp.totalPssKb ?? 0) / maxMem) * 100}%` }} title={`${Math.round(dp.time / 1000)}s: ${memMb} MB`}>
                   <span className="perf-fps-bar-inner perf-fps-mem" />
+                  <span className="perf-bar-label">{memMb > 0 ? `${memMb} MB` : ""}</span>
                 </div>
               );
             })}
@@ -539,8 +592,14 @@ function CpuMemPanel({ deviceId }: { deviceId: string | null }) {
         </div>
       )}
 
-      {!monitoring && dataPoints.length === 0 && (
-        <p className="perf-empty-hint">输入包名后点击"开始监控"查看 CPU 和内存实时数据</p>
+      {!monitoring && dataPoints.length === 0 && !error && (
+        <p className="perf-empty-hint">{pkg ? "监控 CPU 和内存实时数据" : "不选应用仅显示系统 CPU，选应用后可同时查看内存"}</p>
+      )}
+      {error && (
+        <div className="perf-error-box">
+          <span className="perf-error-icon">⚠</span>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );
@@ -558,6 +617,7 @@ function TrafficPanel({ deviceId }: { deviceId: string | null }) {
   const [pkg, setPkg] = useState("");
   const [monitoring, setMonitoring] = useState(false);
   const [dataPoints, setDataPoints] = useState<TrafficDataPoint[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const baselineRef = useRef<{ rx: number | null; tx: number | null }>({ rx: null, tx: null });
@@ -576,6 +636,11 @@ function TrafficPanel({ deviceId }: { deviceId: string | null }) {
         if (json.status === "ok") {
           const rx = json.rxBytes ?? 0;
           const tx = json.txBytes ?? 0;
+          if (rx === 0 && tx === 0 && json.uid === null) {
+            setError("无法获取应用 UID，可能包名错误或系统版本不兼容");
+          } else {
+            setError(null);
+          }
           if (baselineRef.current.rx === null) {
             baselineRef.current = { rx, tx };
           }
@@ -584,8 +649,12 @@ function TrafficPanel({ deviceId }: { deviceId: string | null }) {
             rxBytes: rx - (baselineRef.current.rx ?? 0),
             txBytes: tx - (baselineRef.current.tx ?? 0),
           }]);
+        } else {
+          setError(json.message || "获取流量数据失败");
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }, 3000);
   }, [deviceId, pkg]);
 
@@ -621,7 +690,7 @@ function TrafficPanel({ deviceId }: { deviceId: string | null }) {
       <div className="perf-controls">
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={monitoring} />
         {!monitoring ? (
-          <button className="perf-btn perf-btn-primary" onClick={startMonitoring} disabled={!deviceId || !pkg}>开始监控</button>
+          <button className="perf-btn perf-btn-primary" onClick={startMonitoring} disabled={!deviceId || !pkg}>{!deviceId || !pkg ? "请输入包名" : "开始监控"}</button>
         ) : (
           <button className="perf-btn perf-btn-danger" onClick={stopMonitoring}>停止监控</button>
         )}
@@ -673,8 +742,14 @@ function TrafficPanel({ deviceId }: { deviceId: string | null }) {
         </div>
       )}
 
-      {!monitoring && dataPoints.length === 0 && (
+      {!monitoring && dataPoints.length === 0 && !error && (
         <p className="perf-empty-hint">选择应用后点击"开始监控"查看网络流量数据</p>
+      )}
+      {error && (
+        <div className="perf-error-box">
+          <span className="perf-error-icon">⚠</span>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );
@@ -847,16 +922,28 @@ function GpuPanel({ deviceId }: { deviceId: string | null }) {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   const fetchGpu = useCallback(async () => {
     if (!deviceId) return;
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({ deviceId });
       if (pkg) params.set("package", pkg);
       const resp = await fetch(`/api/adb-helper/perf-gpu?${params}`);
       const json = await resp.json();
-      if (json.status === "ok") setInfo(json);
-    } catch { /* ignore */ }
+      if (json.status === "ok") {
+        setInfo(json);
+        if (!pkg && json.totalFrames === null) {
+          setError("不选应用无法获取 GPU 渲染详情，请选择应用包名");
+        }
+      } else {
+        setError(json.message || "获取 GPU 数据失败");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
     setLoading(false);
   }, [deviceId, pkg]);
 
@@ -879,8 +966,8 @@ function GpuPanel({ deviceId }: { deviceId: string | null }) {
     <div className="perf-panel-content">
       <div className="perf-controls">
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={autoRefresh} />
-        <button className="perf-btn perf-btn-primary" onClick={fetchGpu} disabled={loading || !deviceId}>
-          {loading ? "加载中..." : "获取数据"}
+        <button className="perf-btn perf-btn-primary" onClick={fetchGpu} disabled={loading || !deviceId || !pkg}>
+          {loading ? "加载中..." : !pkg ? "请输入包名" : "获取数据"}
         </button>
         <button className={`perf-btn ${autoRefresh ? "perf-btn-danger" : "perf-btn-outline"}`} onClick={toggleAutoRefresh} disabled={!deviceId}>
           {autoRefresh ? "停止刷新" : "自动刷新"}
@@ -949,8 +1036,14 @@ function GpuPanel({ deviceId }: { deviceId: string | null }) {
         </>
       )}
 
-      {!info && !loading && (
+      {!info && !loading && !error && (
         <p className="perf-empty-hint">选择应用后点击"获取数据"查看 GPU 渲染统计</p>
+      )}
+      {error && (
+        <div className="perf-error-box">
+          <span className="perf-error-icon">⚠</span>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );
@@ -969,6 +1062,7 @@ function StoragePanel({ deviceId }: { deviceId: string | null }) {
   const [monitoring, setMonitoring] = useState(false);
   const [dataPoints, setDataPoints] = useState<StorageDataPoint[]>([]);
   const [diskStats, setDiskStats] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
 
@@ -976,6 +1070,7 @@ function StoragePanel({ deviceId }: { deviceId: string | null }) {
     if (!deviceId || !pkg) return;
     setDataPoints([]);
     setDiskStats("");
+    setError(null);
     startTimeRef.current = Date.now();
     setMonitoring(true);
 
@@ -984,6 +1079,11 @@ function StoragePanel({ deviceId }: { deviceId: string | null }) {
         const resp = await fetch(`/api/adb-helper/perf-storage-io?deviceId=${encodeURIComponent(deviceId)}&package=${encodeURIComponent(pkg)}`);
         const json = await resp.json();
         if (json.status === "ok") {
+          if (json.pid === null) {
+            setError("应用未运行，请先启动应用");
+          } else {
+            setError(null);
+          }
           setDataPoints((prev) => [...prev.slice(-300), {
             time: Date.now() - startTimeRef.current,
             readBytes: json.readBytes,
@@ -1027,7 +1127,7 @@ function StoragePanel({ deviceId }: { deviceId: string | null }) {
       <div className="perf-controls">
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={monitoring} />
         {!monitoring ? (
-          <button className="perf-btn perf-btn-primary" onClick={startMonitoring} disabled={!deviceId || !pkg}>开始监控</button>
+          <button className="perf-btn perf-btn-primary" onClick={startMonitoring} disabled={!deviceId || !pkg}>{!deviceId || !pkg ? "请输入包名" : "开始监控"}</button>
         ) : (
           <button className="perf-btn perf-btn-danger" onClick={stopMonitoring}>停止监控</button>
         )}
@@ -1086,8 +1186,14 @@ function StoragePanel({ deviceId }: { deviceId: string | null }) {
         </div>
       )}
 
-      {!monitoring && dataPoints.length === 0 && (
+      {!monitoring && dataPoints.length === 0 && !error && (
         <p className="perf-empty-hint">选择应用后点击"开始监控"查看存储 I/O 数据</p>
+      )}
+      {error && (
+        <div className="perf-error-box">
+          <span className="perf-error-icon">⚠</span>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );
@@ -1288,7 +1394,7 @@ function ReportPanel({ deviceId }: { deviceId: string | null }) {
       <div className="perf-controls">
         <PackageSelector deviceId={deviceId} value={pkg} onChange={setPkg} disabled={generating} />
         <button className="perf-btn perf-btn-primary" onClick={generateReport} disabled={generating || !deviceId || !pkg}>
-          {generating ? "采集中..." : "采集数据"}
+          {generating ? "采集中..." : (!deviceId || !pkg ? "请输入包名" : "采集数据")}
         </button>
         {metrics && (
           <>
@@ -1490,7 +1596,7 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
     const step: ScenarioStep = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       type,
-      params: type === "wait" ? { seconds: 3 } : type === "monkey" ? { events: 1000, throttle: 300 } : type === "shell-cmd" ? { cmd: "" } : {},
+      params: type === "start-app" ? { package: "", activity: "" } : type === "wait" ? { seconds: 3 } : type === "monkey" ? { events: 1000, throttle: 300 } : type === "shell-cmd" ? { cmd: "" } : {},
     };
     setEditingScenario({ ...editingScenario, steps: [...editingScenario.steps, step] });
   }, [editingScenario]);
@@ -1524,19 +1630,22 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
 
   const runScenario = useCallback(async (scenario: Scenario) => {
     if (!deviceId) return;
+    const abortFlag = { aborted: false };
     setRunning(true);
-    setRunLog([`<Icon name="start" size={12} /> 开始执行场景: ${scenario.name}`]);
+    setRunLog([`✔ 开始执行场景: ${scenario.name}`]);
     const pkg = scenario.package;
 
     for (const step of scenario.steps) {
-      if (!running && runLog.length > 1) break; // Allow first step to run
+      if (abortFlag.aborted) break;
       const stepLabel = step.type === "start-app" ? "启动应用" : step.type === "wait" ? "等待" : step.type === "monkey" ? "Monkey" : step.type === "collect-metrics" ? "采集指标" : "Shell 命令";
       setRunLog((prev) => [...prev, `  ⏳ ${stepLabel}...`]);
 
       try {
         if (step.type === "start-app") {
-          await fetch(`/api/adb-helper/perf-startup?deviceId=${encodeURIComponent(deviceId)}&package=${encodeURIComponent(pkg)}&type=cold`);
-          setRunLog((prev) => [...prev, `  ✓ 应用已启动`]);
+          const stepPkg = step.params.package || pkg;
+          const actParam = step.params.activity ? `&activity=${encodeURIComponent(step.params.activity)}` : "";
+          await fetch(`/api/adb-helper/perf-startup?deviceId=${encodeURIComponent(deviceId)}&package=${encodeURIComponent(stepPkg)}&type=cold${actParam}`);
+          setRunLog((prev) => [...prev, `  ✓ 应用 ${stepPkg} 已启动`]);
         } else if (step.type === "wait") {
           const sec = Number(step.params.seconds) || 3;
           await new Promise((r) => setTimeout(r, sec * 1000));
@@ -1574,9 +1683,9 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
     setRunning(false);
   }, [deviceId, running, runLog.length]);
 
-  const stepTypeLabel = (type: ScenarioStep["type"]) => {
+  const stepTypeLabel = (type: ScenarioStep["type"], params?: Record<string, any>) => {
     switch (type) {
-      case "start-app": return <><Icon name="start" size={12} /> 启动应用</>;
+      case "start-app": return <><Icon name="start" size={12} /> 启动应用{params?.package ? `: ${params.package}` : ""}</>;
       case "wait": return "⏱ 等待";
       case "monkey": return "🐵 Monkey 测试";
       case "collect-metrics": return <><Icon name="table" size={12} /> 采集指标</>;
@@ -1607,10 +1716,18 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
                 <span className="perf-step-num">{idx + 1}</span>
                 <span className="perf-step-type">{stepTypeLabel(step.type)}</span>
                 <div className="perf-step-params">
-                  {step.type === "wait" && (
-                    <input type="number" className="perf-input-number" value={step.params.seconds ?? 3} onChange={(e) => updateStepParam(step.id, "seconds", Number(e.target.value))} min={1} max={300} />
+                  {step.type === "start-app" && (
+                    <>
+                      <input type="text" className="perf-input" placeholder="包名" value={step.params.package ?? ""} onChange={(e) => updateStepParam(step.id, "package", e.target.value)} style={{ flex: 1 }} />
+                      <input type="text" className="perf-input perf-input-sm" placeholder="Activity (可选)" value={step.params.activity ?? ""} onChange={(e) => updateStepParam(step.id, "activity", e.target.value)} />
+                    </>
                   )}
-                  {step.type === "wait" && <span className="perf-step-unit">秒</span>}
+                  {step.type === "wait" && (
+                    <>
+                      <input type="number" className="perf-input-number" value={step.params.seconds ?? 3} onChange={(e) => updateStepParam(step.id, "seconds", Number(e.target.value))} min={1} max={300} />
+                      <span className="perf-step-unit">秒</span>
+                    </>
+                  )}
                   {step.type === "monkey" && (
                     <>
                       <input type="number" className="perf-input-number" value={step.params.events ?? 1000} onChange={(e) => updateStepParam(step.id, "events", Number(e.target.value))} min={1} />
@@ -1662,7 +1779,7 @@ function ScenarioPanel({ deviceId }: { deviceId: string | null }) {
                 </div>
                 <div className="perf-scenario-card-steps">
                   {s.steps.map((step, i) => (
-                    <span key={step.id} className="perf-scenario-step-badge">{i + 1}. {stepTypeLabel(step.type)}</span>
+                    <span key={step.id} className="perf-scenario-step-badge">{i + 1}. {stepTypeLabel(step.type, step.params)}</span>
                   ))}
                 </div>
                 <div className="perf-scenario-card-actions">
@@ -1702,18 +1819,23 @@ interface AlertEntry {
   type: "crash" | "anr" | "cpu" | "memory" | "fps" | "temperature";
   message: string;
   severity: "critical" | "warning" | "info";
+  detail?: string;
 }
 
 function AlertPanel({ deviceId }: { deviceId: string | null }) {
   const [pkg, setPkg] = useState("");
   const [monitoring, setMonitoring] = useState(false);
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
+  const [selectedAlert, setSelectedAlert] = useState<AlertEntry | null>(null);
   const [thresholds, setThresholds] = useState<AlertThresholds>({ cpuMax: 80, memMaxMb: 512, fpsMin: 30, tempMax: 42 });
+  const thresholdsRef = useRef(thresholds);
+  thresholdsRef.current = thresholds;
   const intervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const checkAlerts = useCallback(async () => {
     if (!deviceId) return;
+    const t = thresholdsRef.current; // always fresh from ref
     const newAlerts: AlertEntry[] = [];
     const ts = Date.now();
 
@@ -1729,8 +1851,9 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
             id: `crash-${ts}`,
             time: ts,
             type: "crash",
-            message: `检测到 ${json.crashes.length} 条崩溃日志`,
+            message: `检测到 ${json.crashes.length} 个崩溃`,
             severity: "critical",
+            detail: json.crashes.join("\n\n===\n\n"),
           });
         }
         if (json.anrs?.length > 0) {
@@ -1738,8 +1861,9 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
             id: `anr-${ts}`,
             time: ts,
             type: "anr",
-            message: `检测到 ${json.anrs.length} 条 ANR 记录`,
+            message: `检测到 ${json.anrs.length} 个 ANR`,
             severity: "critical",
+            detail: json.anrs.join("\n\n===\n\n"),
           });
         }
       }
@@ -1751,21 +1875,21 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
         const resp = await fetch(`/api/adb-helper/perf-cpu-mem?deviceId=${encodeURIComponent(deviceId)}&package=${encodeURIComponent(pkg)}`);
         const json = await resp.json();
         if (json.status === "ok") {
-          if (json.cpuPercent !== null && json.cpuPercent > thresholds.cpuMax) {
+          if (json.cpuPercent !== null && json.cpuPercent > t.cpuMax) {
             newAlerts.push({
               id: `cpu-${ts}`,
               time: ts,
               type: "cpu",
-              message: `CPU 使用率 ${json.cpuPercent}% 超过阈值 ${thresholds.cpuMax}%`,
+              message: `CPU 使用率 ${json.cpuPercent}% 超过阈值 ${t.cpuMax}%`,
               severity: "warning",
             });
           }
-          if (json.totalPssKb !== null && json.totalPssKb / 1024 > thresholds.memMaxMb) {
+          if (json.totalPssKb !== null && json.totalPssKb / 1024 > t.memMaxMb) {
             newAlerts.push({
               id: `mem-${ts}`,
               time: ts,
               type: "memory",
-              message: `内存 ${Math.round(json.totalPssKb / 1024)} MB 超过阈值 ${thresholds.memMaxMb} MB`,
+              message: `内存 ${Math.round(json.totalPssKb / 1024)} MB 超过阈值 ${t.memMaxMb} MB`,
               severity: "warning",
             });
           }
@@ -1777,12 +1901,12 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
     try {
       const resp = await fetch(`/api/adb-helper/perf-battery?deviceId=${encodeURIComponent(deviceId)}`);
       const json = await resp.json();
-      if (json.status === "ok" && json.temperature !== null && json.temperature > thresholds.tempMax) {
+      if (json.status === "ok" && json.temperature !== null && json.temperature > t.tempMax) {
         newAlerts.push({
           id: `temp-${ts}`,
           time: ts,
           type: "temperature",
-          message: `设备温度 ${json.temperature}°C 超过阈值 ${thresholds.tempMax}°C`,
+          message: `设备温度 ${json.temperature}°C 超过阈值 ${t.tempMax}°C`,
           severity: "warning",
         });
       }
@@ -1791,7 +1915,7 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
     if (newAlerts.length > 0) {
       setAlerts((prev) => [...newAlerts, ...prev].slice(0, 200));
     }
-  }, [deviceId, pkg, thresholds]);
+  }, [deviceId, pkg]); // <-- thresholds removed from deps, using ref instead
 
   const startMonitoring = useCallback(() => {
     startTimeRef.current = Date.now();
@@ -1840,22 +1964,22 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
         <div className="perf-threshold-grid">
           <label className="perf-threshold-item">
             <span>CPU 上限</span>
-            <input type="number" className="perf-input-number" value={thresholds.cpuMax} onChange={(e) => setThresholds({ ...thresholds, cpuMax: Number(e.target.value) })} disabled={monitoring} />
+            <input type="number" className="perf-input-number" value={thresholds.cpuMax} onChange={(e) => setThresholds({ ...thresholds, cpuMax: Number(e.target.value) })} />
             <span>%</span>
           </label>
           <label className="perf-threshold-item">
             <span>内存上限</span>
-            <input type="number" className="perf-input-number" value={thresholds.memMaxMb} onChange={(e) => setThresholds({ ...thresholds, memMaxMb: Number(e.target.value) })} disabled={monitoring} />
+            <input type="number" className="perf-input-number" value={thresholds.memMaxMb} onChange={(e) => setThresholds({ ...thresholds, memMaxMb: Number(e.target.value) })} />
             <span>MB</span>
           </label>
           <label className="perf-threshold-item">
             <span>帧率下限</span>
-            <input type="number" className="perf-input-number" value={thresholds.fpsMin} onChange={(e) => setThresholds({ ...thresholds, fpsMin: Number(e.target.value) })} disabled={monitoring} />
+            <input type="number" className="perf-input-number" value={thresholds.fpsMin} onChange={(e) => setThresholds({ ...thresholds, fpsMin: Number(e.target.value) })} />
             <span>FPS</span>
           </label>
           <label className="perf-threshold-item">
             <span>温度上限</span>
-            <input type="number" className="perf-input-number" value={thresholds.tempMax} onChange={(e) => setThresholds({ ...thresholds, tempMax: Number(e.target.value) })} disabled={monitoring} />
+            <input type="number" className="perf-input-number" value={thresholds.tempMax} onChange={(e) => setThresholds({ ...thresholds, tempMax: Number(e.target.value) })} />
             <span>°C</span>
           </label>
         </div>
@@ -1880,6 +2004,24 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
       )}
 
       {/* Alert list */}
+      {/* Alert detail modal */}
+      {selectedAlert && (
+        <div className="perf-modal-overlay" onClick={() => setSelectedAlert(null)}>
+          <div className="perf-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="perf-modal-header">
+              <h3>{typeLabel(selectedAlert.type)} 详情</h3>
+              <button className="perf-btn-icon" onClick={() => setSelectedAlert(null)}>✕</button>
+            </div>
+            <div className="perf-modal-body">
+              <p><strong>时间:</strong> {new Date(selectedAlert.time).toLocaleString()}</p>
+              <p><strong>级别:</strong> {selectedAlert.severity === "critical" ? "严重" : "警告"}</p>
+              <p><strong>消息:</strong> {selectedAlert.message}</p>
+              {selectedAlert.detail && <pre className="perf-raw-output">{selectedAlert.detail}</pre>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {alerts.length > 0 ? (
         <div className="perf-alert-list">
           {alerts.slice(0, 50).map((alert) => (
@@ -1888,6 +2030,9 @@ function AlertPanel({ deviceId }: { deviceId: string | null }) {
               <span className="perf-alert-type">{typeLabel(alert.type)}</span>
               <span className="perf-alert-msg">{alert.message}</span>
               <span className="perf-alert-time">{new Date(alert.time).toLocaleTimeString()}</span>
+              {(alert.type === "crash" || alert.type === "anr") && (
+                <button className="perf-btn perf-btn-sm" onClick={() => setSelectedAlert(alert)}>查看</button>
+              )}
             </div>
           ))}
         </div>
@@ -1911,8 +2056,7 @@ export default function PerformancePage({ currentDeviceId }: { currentDeviceId: 
         return <FpsPanel deviceId={currentDeviceId} />;
       case "startup":
         return <StartupPanel deviceId={currentDeviceId} />;
-      case "cpu":
-      case "memory":
+      case "cpu-mem":
         return <CpuMemPanel deviceId={currentDeviceId} />;
       case "traffic":
         return <TrafficPanel deviceId={currentDeviceId} />;

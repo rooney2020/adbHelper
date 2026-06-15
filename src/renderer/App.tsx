@@ -3,6 +3,7 @@ import Icon from "./components/Icon";
 import ReactMarkdown from "react-markdown";
 import { buildCommandString, categories, createDefaultParamValues, isToggleParam, getToggleParamValue, getParamInlineText, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
 import { fallbackApi, matchesFilter, normalizeLogcatRefreshIntervalMs, normalizeLogcatLevelSelection, fetchDevApi, postDevApi } from "./lib/fallbackApi";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { renderOutputPreview, renderDiffText, buildDiffRows, buildDiffSegments, getResultPrimaryCommand, getDiffRecordMeta, countOutputLines, copyText, buildExportBaseName, downloadTextFile, downloadBlobFile, decodeBase64ToBlob, buildMarkdownExport, buildTextExport, resolveDiffTarget, highlightText, wrapInMarkdownCodeBlock, historyItemToRunResult } from "./lib/outputRenderers";
 
 const BackupPage = lazy(() => import("./pages/BackupPage"));
@@ -1324,6 +1325,10 @@ function loadCustomCommands(): CustomCommandEntry[] {
 
 function saveCustomCommands(commands: CustomCommandEntry[]) {
   localStorage.setItem(CUSTOM_COMMANDS_STORAGE_KEY, JSON.stringify(commands));
+  // Also persist to file
+  try {
+    (window as any).adbHelperApi?.storage?.save({ key: "customCommands", value: commands }).catch(() => {});
+  } catch { /* ignore */ }
 }
 const REMOTE_DEVICE_STORAGE_KEY = "adb-helper.remote-devices.v1";
 const THEME_PRESETS: ThemePreset[] = [
@@ -2159,6 +2164,7 @@ export default function App() {
   const initialWorkspaceWidthsRef = useRef(getDefaultPanelWidths(typeof window === "undefined" ? 1340 : window.innerWidth - 24));
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [deviceLoading, setDeviceLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeCategoryId, setActiveCategoryId] = useState(categories[0].id);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -2995,8 +3001,29 @@ export default function App() {
     };
   }, [runtimeApi]);
 
-  // Track whether file-based panels have been loaded (to avoid overwriting file with stale localStorage data)
+  // Track whether file-based data has been loaded (to avoid overwriting file with stale localStorage data)
   const panelsFileReadyRef = useRef(false);
+  const appDataFileReadyRef = useRef(false);
+
+  // ── Unified storage: load ALL app data from file on mount ────────────────
+  useEffect(() => {
+    const api = (window as any).adbHelperApi?.storage;
+    if (!api) {
+      appDataFileReadyRef.current = true;
+      return;
+    }
+    api.loadAll().then((result: any) => {
+      if (result?.status === "ok" && result.data) {
+        const d = result.data;
+        if (d.customCommands && Array.isArray(d.customCommands)) setCustomCommands(d.customCommands);
+        if (d.theme && typeof d.theme === "string") setActiveThemeId(d.theme);
+        if (d.generalSettings && typeof d.generalSettings === "object") setGeneralSettingsRules(d.generalSettings);
+        if (d.remoteDevices && Array.isArray(d.remoteDevices)) setSavedRemoteDevices(d.remoteDevices);
+      }
+    }).catch(() => {}).finally(() => {
+      appDataFileReadyRef.current = true;
+    });
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3033,6 +3060,9 @@ export default function App() {
 
     if (typeof window !== "undefined") {
       window.localStorage.setItem(THEME_STORAGE_KEY, activeThemeId);
+      if (appDataFileReadyRef.current) {
+        (window as any).adbHelperApi?.storage.save({ key: "theme", value: activeThemeId }).catch(() => {});
+      }
     }
   }, [activeThemeId]);
 
@@ -3042,6 +3072,9 @@ export default function App() {
     }
 
     window.localStorage.setItem(GENERAL_SETTINGS_STORAGE_KEY, JSON.stringify(generalSettingsRules));
+    if (appDataFileReadyRef.current) {
+      (window as any).adbHelperApi?.storage.save({ key: "generalSettings", value: generalSettingsRules }).catch(() => {});
+    }
   }, [generalSettingsRules]);
 
   const _settingsSyncedRef = useRef(false);
@@ -3061,6 +3094,9 @@ export default function App() {
     }
 
     window.localStorage.setItem(REMOTE_DEVICE_STORAGE_KEY, JSON.stringify(savedRemoteDevices));
+    if (appDataFileReadyRef.current) {
+      (window as any).adbHelperApi?.storage.save({ key: "remoteDevices", value: savedRemoteDevices }).catch(() => {});
+    }
   }, [savedRemoteDevices]);
 
   // Track whether file-based macro tasks have been loaded
@@ -6495,6 +6531,24 @@ export default function App() {
             </div>
           </div>
           <button
+            className={`icon-button refresh-button${refreshing ? " refreshing" : ""}`}
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                const items = await runtimeApi.device.list();
+                applyDeviceCatalog(items);
+              } catch {
+                // device list unchanged on error
+              }
+              setTimeout(() => setRefreshing(false), 600);
+            }}
+            aria-label="刷新设备列表"
+            title="刷新设备列表"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          </button>
+          <button
             className="icon-button settings-button"
             onClick={() => setSettingsOpen(true)}
             aria-label="打开设置中心"
@@ -6658,6 +6712,7 @@ export default function App() {
         </>
       ) : null}
 
+      <ErrorBoundary>
       <Suspense
         fallback={(
           <main className="page-shell">
@@ -7167,6 +7222,7 @@ export default function App() {
         />
       ) : null}
       </Suspense>
+      </ErrorBoundary>
 
       {contextMenuState ? (
         <div

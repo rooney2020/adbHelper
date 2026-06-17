@@ -684,6 +684,7 @@ h3 {
 
 .device-display-floating-popup {
   width: 320px;
+  max-height: 520px;
 }
 
 .device-install-floating-popup {
@@ -1477,6 +1478,15 @@ h3 {
   overflow-y: auto;
 }
 
+.param-editor-rename {
+  margin-bottom: 12px;
+}
+
+.param-editor-rename .param-field-input {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .param-editor-fields {
   display: flex;
   flex-direction: column;
@@ -1763,7 +1773,11 @@ h3 {
 
 .panel-list-head,
 .workspace-right-header,
-.panel-command-card-head {
+.panel-command-card-head,
+.panel-item-head,
+.catalog-command-head,
+.catalog-modal-header,
+.catalog-modal-footer {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -1771,16 +1785,84 @@ h3 {
   min-width: 0;
 }
 
-.panel-command-card-head,
-.panel-item-head,
-.catalog-command-head,
-.catalog-modal-header,
-.catalog-modal-footer,
-.panel-command-toolbar {
+
+/* ── Command search dropdown ── */
+
+.cmd-search-wrap {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color, #eee);
+  padding: 8px 10px;
+}
+
+.cmd-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--input-bg, #fff);
+  color: var(--text-color, #333);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.cmd-search-input:focus {
+  border-color: var(--primary-color, #4a90d9);
+}
+
+.cmd-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 10px;
+  right: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 100;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  background: var(--panel-bg, #fff);
+}
+
+.cmd-search-item {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cmd-search-item:hover {
+  background: var(--hover-bg, #f0f4ff);
+}
+
+.cmd-search-item + .cmd-search-item {
+  border-top: 1px solid var(--border-color, #f0f0f0);
+}
+
+.cmd-search-summary {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cmd-search-raw {
+  font-size: 11px;
+  color: var(--text-dim, #aaa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .panel-list-head,
@@ -2008,14 +2090,14 @@ h3 {
   padding: 10px 12px;
 }
 
-.panel-create-button {
+.cmdlist-subhead .primary-button.compact-button {
+  padding: 6px 14px;
+  font-size: 0.85em;
+  border-radius: 6px;
   white-space: nowrap;
 }
 
-.add-command-button {
-  min-width: 0;
-  padding: 10px 16px;
-  align-self: flex-start;
+.panel-create-button {
   white-space: nowrap;
 }
 
@@ -2060,6 +2142,44 @@ h3 {
   flex-direction: column;
   gap: 16px;
   padding: 18px;
+}
+
+.import-dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 18px 18px;
+}
+
+.import-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-option-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  background: var(--panel-bg, #fff);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.import-option-card:hover {
+  border-color: var(--primary-color, #4a90d9);
+  background: var(--hover-bg, #f0f4ff);
+}
+
+.import-option-card span {
+  font-size: 0.85em;
+  color: var(--text-secondary, #666);
 }
 
 .catalog-modal-body {
@@ -3113,6 +3233,62 @@ h3 {
 
 .keysim-quick-add-menu button:hover {
   background: rgba(29, 134, 217, 0.08);
+}
+
+/* ===== 宏命令录制 ===== */
+.keysim-rec-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.keysim-rec-preview {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.keysim-rec-pulse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.keysim-rec-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e53935;
+  animation: keysim-rec-blink 1.2s ease-in-out infinite;
+}
+@keyframes keysim-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.keysim-rec-results {
+  margin-top: 8px;
+}
+.keysim-rec-step-list {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.keysim-rec-step-list .keysim-finger-header {
+  background: var(--bg-emphasis);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.keysim-rec-step-list .keysim-finger-row {
+  display: grid;
+  grid-template-columns: 40px 60px 1fr 90px;
+  gap: 0;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12px;
+}
+.keysim-rec-step-list .keysim-finger-row:last-child {
+  border-bottom: none;
 }
 
 .keysim-quick-cards {

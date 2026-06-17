@@ -46,6 +46,21 @@ async function _checkProxyAlive() {
 async function _ensureWinscopeProxy(winscopeRoot) {
     const WINSCOPE_PROXY = join(winscopeRoot, "winscope_proxy.py");
     const TOKEN_FILE = join(homedir(), ".config/winscope/.token");
+    // Kill any lingering proxy (from previous app instance) so it doesn't hold the old cwd
+    if (process.platform !== "win32") {
+        try {
+            const { stdout } = await execFileAsync("lsof", ["-ti", ":5544"], { timeout: 2000 });
+            const pids = toStr(stdout).trim().split(/\s+/).filter(Boolean);
+            for (const pid of pids) {
+                try {
+                    process.kill(Number(pid), "SIGTERM");
+                }
+                catch { /* best-effort */ }
+            }
+            await new Promise(r => setTimeout(r, 300));
+        }
+        catch { /* no process on port 5544 — nothing to kill */ }
+    }
     const alive = await _checkProxyAlive();
     if (alive) {
         try {
@@ -56,7 +71,10 @@ async function _ensureWinscopeProxy(winscopeRoot) {
         }
     }
     // Start (or restart) proxy
+    const winscopeDataDir = join(app.getPath("userData"), "winscope");
+    await mkdir(winscopeDataDir, { recursive: true });
     const child = spawn(pythonExecutable, [WINSCOPE_PROXY], {
+        cwd: winscopeDataDir,
         detached: true,
         stdio: "ignore",
         windowsHide: true,
@@ -86,10 +104,22 @@ async function _ensureWinscopeProxy(winscopeRoot) {
     }
     return null;
 }
+let _currentStateDir = undefined;
+let _appStateDir = undefined;
+function setBackendStateDir(dir) { _currentStateDir = dir; }
+function resolveStatePath(file) {
+    const stateDir = _appStateDir ?? join(__dirname, "../../backend/state");
+    return join(stateDir, file);
+}
 async function invokeBackend(args) {
+    const env = { ...process.env };
+    if (_currentStateDir) {
+        env["ADB_HELPER_STATE_DIR"] = _currentStateDir;
+    }
     const { stdout } = await execFileAsync(pythonExecutable, [backendCliPath, ...args], {
         cwd: join(__dirname, "../.."),
-        maxBuffer: 50 * 1024 * 1024
+        maxBuffer: 50 * 1024 * 1024,
+        env
     });
     return JSON.parse(toStr(stdout));
 }
@@ -598,10 +628,10 @@ function registerIpcHandlers() {
         }
         return { status: "ok" };
     });
-    const panelsFilePath = join(__dirname, "../../backend/state/panels.json");
     ipcMain.handle("panels.load", async () => {
+        const p = resolveStatePath("panels.json");
         try {
-            const data = await readFile(panelsFilePath, "utf-8");
+            const data = await readFile(p, "utf-8");
             return { status: "ok", panels: JSON.parse(data) };
         }
         catch {
@@ -609,19 +639,20 @@ function registerIpcHandlers() {
         }
     });
     ipcMain.handle("panels.save", async (_event, payload) => {
+        const p = resolveStatePath("panels.json");
         try {
-            await mkdir(dirname(panelsFilePath), { recursive: true });
-            await writeFile(panelsFilePath, JSON.stringify(payload.panels, null, 2), "utf-8");
+            await mkdir(dirname(p), { recursive: true });
+            await writeFile(p, JSON.stringify(payload.panels, null, 2), "utf-8");
             return { status: "ok" };
         }
         catch (err) {
             return { status: "error", message: err instanceof Error ? err.message : String(err) };
         }
     });
-    const macroTasksFilePath = join(__dirname, "../../backend/state/macro_tasks.json");
     ipcMain.handle("macroTasks.load", async () => {
+        const p = resolveStatePath("macro_tasks.json");
         try {
-            const data = await readFile(macroTasksFilePath, "utf-8");
+            const data = await readFile(p, "utf-8");
             return { status: "ok", tasks: JSON.parse(data) };
         }
         catch {
@@ -629,9 +660,10 @@ function registerIpcHandlers() {
         }
     });
     ipcMain.handle("macroTasks.save", async (_event, payload) => {
+        const p = resolveStatePath("macro_tasks.json");
         try {
-            await mkdir(dirname(macroTasksFilePath), { recursive: true });
-            await writeFile(macroTasksFilePath, JSON.stringify(payload.tasks, null, 2), "utf-8");
+            await mkdir(dirname(p), { recursive: true });
+            await writeFile(p, JSON.stringify(payload.tasks, null, 2), "utf-8");
             return { status: "ok" };
         }
         catch (err) {
@@ -639,10 +671,10 @@ function registerIpcHandlers() {
         }
     });
     // ── Unified storage: single file for all app data ──────────────────────
-    const appDataPath = join(__dirname, "../../backend/state/app-data.json");
     ipcMain.handle("storage.loadAll", async () => {
+        const p = resolveStatePath("app-data.json");
         try {
-            const data = await readFile(appDataPath, "utf-8");
+            const data = await readFile(p, "utf-8");
             return { status: "ok", data: JSON.parse(data) };
         }
         catch {
@@ -650,16 +682,17 @@ function registerIpcHandlers() {
         }
     });
     ipcMain.handle("storage.save", async (_event, payload) => {
+        const p = resolveStatePath("app-data.json");
         try {
-            await mkdir(dirname(appDataPath), { recursive: true });
+            await mkdir(dirname(p), { recursive: true });
             let all = {};
             try {
-                const existing = await readFile(appDataPath, "utf-8");
+                const existing = await readFile(p, "utf-8");
                 all = JSON.parse(existing);
             }
             catch { /* file doesn't exist yet */ }
             all[payload.key] = payload.value;
-            await writeFile(appDataPath, JSON.stringify(all, null, 2), "utf-8");
+            await writeFile(p, JSON.stringify(all, null, 2), "utf-8");
             return { status: "ok" };
         }
         catch (err) {
@@ -743,6 +776,371 @@ function registerIpcHandlers() {
             return { status: "error", message: err instanceof Error ? err.message : String(err) };
         }
     });
+    /**
+     * Input event recording via adb shell getevent -lt
+     * Captures touch/key events and parses them into KeySimMacroStep[]
+     */
+    // ── Recording state (shared by getevent and dumpsys modes) ──
+    let activeInputRecording = null;
+    let inputRecordingBuffer = [];
+    let inputRecordingStartTime = 0;
+    let currentRecordingMode = "getevent";
+    const INPUT_RECORDING_TIMEOUT_MS = 120_000; // max 2 minutes
+    const INPUT_RECORDING_MAX_LINES = 100_000;
+    // ── Dumpsys polling state ──
+    let dumpsysPollTimer = null;
+    let dumpsysSeenEvents;
+    let dumpsysRawEvents;
+    let dumpsysDeviceIdRunning = "";
+    // Regex to parse dumpsys RecentQueue lines
+    const DUMPSYS_MOTION_RE = /MotionEvent\(deviceId=-?\d+,\s*eventTime=(\d+)[^)]*?action=(DOWN|UP|MOVE)[^)]*?,\s*pointers=\[0:\s*\(([\d.]+),\s*([\d.]+)\)/;
+    const DUMPSYS_KEY_RE = /KeyEvent\(deviceId=-?\d+,\s*eventTime=(\d+)[^)]*?action=(DOWN|UP)[^)]*?keyCode=(\d+)/;
+    function parseDumpsysRecentQueueLine(line, seedOnly = false) {
+        const mMotion = line.match(DUMPSYS_MOTION_RE);
+        if (mMotion) {
+            const eventTime = parseInt(mMotion[1], 10);
+            const action = mMotion[2];
+            const x = Math.round(parseFloat(mMotion[3]));
+            const y = Math.round(parseFloat(mMotion[4]));
+            const key = `M:${mMotion[1]}:${action}`;
+            if (dumpsysSeenEvents.has(key))
+                return;
+            dumpsysSeenEvents.add(key);
+            if (!seedOnly) {
+                dumpsysRawEvents.push({ time: eventTime, type: "touch", action, x, y, keyCode: -1 });
+            }
+            return;
+        }
+        const mKey = line.match(DUMPSYS_KEY_RE);
+        if (mKey) {
+            const eventTime = parseInt(mKey[1], 10);
+            const action = mKey[2];
+            const keyCode = parseInt(mKey[3], 10);
+            const key = `K:${mKey[1]}:${action}:${keyCode}`;
+            if (dumpsysSeenEvents.has(key))
+                return;
+            dumpsysSeenEvents.add(key);
+            if (!seedOnly) {
+                dumpsysRawEvents.push({ time: eventTime, type: "key", action, x: -1, y: -1, keyCode });
+            }
+        }
+    }
+    // Map Android keyCode to KEYCODE_ name
+    function androidKeyCodeToName(code) {
+        const map = {
+            1: "MENU", 2: "SOFT_RIGHT", 3: "HOME", 4: "BACK", 5: "CALL", 6: "ENDCALL",
+            7: "0", 8: "1", 9: "2", 10: "3", 11: "4", 12: "5", 13: "6", 14: "7", 15: "8", 16: "9",
+            17: "STAR", 18: "POUND", 19: "DPAD_UP", 20: "DPAD_DOWN", 21: "DPAD_LEFT", 22: "DPAD_RIGHT",
+            23: "DPAD_CENTER", 24: "VOLUME_UP", 25: "VOLUME_DOWN", 26: "POWER",
+            51: "CLEAR", 66: "ENTER", 67: "DEL", 82: "MENU", 84: "SEARCH",
+            85: "MEDIA_PLAY_PAUSE", 86: "MEDIA_STOP", 87: "MEDIA_NEXT", 88: "MEDIA_PREVIOUS",
+            91: "MEDIA_REWIND", 92: "MEDIA_FAST_FORWARD", 93: "MEDIA_PLAY",
+            111: "ESCAPE", 112: "FORWARD_DEL", 113: "CTRL_LEFT", 114: "CTRL_RIGHT",
+            115: "CAPS_LOCK", 116: "SCROLL_LOCK", 140: "FUNCTION", 141: "SYSRQ",
+            143: "BREAK", 158: "MOVE_HOME", 159: "MOVE_END", 160: "INSERT",
+            176: "NUMPAD_ENTER", 207: "HEADSETHOOK", 220: "BRIGHTNESS_DOWN",
+            221: "BRIGHTNESS_UP", 224: "MUTE", 231: "TAB", 255: "WAKEUP",
+            10001: "ASSIST", 10002: "NAVIGATE", 10003: "DICTATE", 10004: "VOICE_ASSIST",
+        };
+        return map[code] || `KEYCODE_UNKNOWN_${code}`;
+    }
+    function parseDumpsysToSteps() {
+        const steps = [];
+        let stepIndex = 0;
+        // Sort by eventTime (monotonic ns), stable for DOWN before UP
+        dumpsysRawEvents.sort((a, b) => a.time - b.time);
+        // Track pending pairs
+        let lastEventTime = null;
+        let pendingTouchDown = null;
+        let pendingKeyTime = null;
+        for (const evt of dumpsysRawEvents) {
+            if (evt.type === "touch") {
+                if (evt.action === "DOWN") {
+                    pendingTouchDown = { x: evt.x, y: evt.y, time: evt.time };
+                }
+                else if (evt.action === "UP" && pendingTouchDown) {
+                    const down = pendingTouchDown;
+                    pendingTouchDown = null;
+                    const dx = evt.x - down.x;
+                    const dy = evt.y - down.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const durationNs = evt.time - down.time;
+                    const durationMs = Math.max(1, Math.round(durationNs / 1_000_000));
+                    const delayMs = lastEventTime !== null ? Math.round((down.time - lastEventTime) / 1_000_000) : 300;
+                    lastEventTime = evt.time;
+                    const stepId = `recorded-${stepIndex++}`;
+                    const cappedDelay = String(Math.max(50, Math.min(1000, delayMs)));
+                    if (dist < 30 && durationMs < 800) {
+                        steps.push({ id: stepId, type: "tap", name: `点击 (${down.x}, ${down.y})`, value: `${down.x},${down.y}`, delayMs: cappedDelay });
+                    }
+                    else {
+                        const swipeDur = Math.max(50, durationMs);
+                        steps.push({ id: stepId, type: "swipe", name: `滑动 (${down.x},${down.y})→(${evt.x},${evt.y})`, value: `${down.x},${down.y},${evt.x},${evt.y},${swipeDur}`, delayMs: cappedDelay });
+                    }
+                }
+            }
+            else if (evt.type === "key") {
+                if (evt.action === "DOWN") {
+                    pendingKeyTime = evt.time;
+                }
+                else if (evt.action === "UP" && pendingKeyTime !== null) {
+                    const delayMs = lastEventTime !== null ? Math.round((pendingKeyTime - lastEventTime) / 1_000_000) : 200;
+                    lastEventTime = evt.time;
+                    pendingKeyTime = null;
+                    const keyName = androidKeyCodeToName(evt.keyCode);
+                    const stepId = `recorded-${stepIndex++}`;
+                    steps.push({
+                        id: stepId, type: "key", name: `按键 ${keyName}`,
+                        value: `KEYCODE_${keyName}`,
+                        delayMs: String(Math.max(50, Math.min(1000, delayMs))),
+                    });
+                }
+            }
+        }
+        return steps;
+    }
+    /**
+     * Parse RecentQueue section from dumpsys input output.
+     * @param stdout - raw dumpsys output
+     * @param seedOnly - if true, only populate seenEvents (warmup), skip rawEvents
+     */
+    function buildParseRecentQueueFn(stdout, seedOnly = false) {
+        const text = typeof stdout === "string" ? stdout : stdout.toString("utf-8");
+        const recentMatch = text.match(/RecentQueue:.*?(?=\n  PendingEvent|$)/s);
+        if (!recentMatch)
+            return;
+        const lines = recentMatch[0].split("\n");
+        for (const line of lines) {
+            parseDumpsysRecentQueueLine(line, seedOnly);
+        }
+    }
+    ipcMain.handle("recording.start", async (_event, payload) => {
+        if (activeInputRecording || dumpsysPollTimer) {
+            return { status: "error", message: "已有录制在进行中" };
+        }
+        const mode = payload.mode || "getevent";
+        currentRecordingMode = mode;
+        inputRecordingBuffer = [];
+        inputRecordingStartTime = Date.now();
+        if (mode === "dumpsys") {
+            // Dumpsys polling mode: periodically fetch RecentQueue from dumpsys input
+            dumpsysSeenEvents = new Set();
+            dumpsysRawEvents = [];
+            dumpsysDeviceIdRunning = payload.deviceId;
+            const pollStartTime = Date.now();
+            async function runPoll() {
+                if (!dumpsysPollTimer)
+                    return; // stopped
+                // Auto-stop after timeout
+                if (Date.now() - pollStartTime >= INPUT_RECORDING_TIMEOUT_MS) {
+                    dumpsysPollTimer = null;
+                    return;
+                }
+                try {
+                    const { stdout } = await execFileAsync("adb", ["-s", dumpsysDeviceIdRunning, "shell", "dumpsys", "input"], { timeout: 5000 });
+                    buildParseRecentQueueFn(stdout);
+                }
+                catch { /* ignore polling errors */ }
+                if (dumpsysPollTimer) {
+                    dumpsysPollTimer = setTimeout(runPoll, 300);
+                }
+            }
+            // Step 1: Warmup poll — seed seenEvents so pre-existing events aren't recorded
+            dumpsysPollTimer = setTimeout(async () => {
+                try {
+                    const { stdout } = await execFileAsync("adb", ["-s", dumpsysDeviceIdRunning, "shell", "dumpsys", "input"], { timeout: 5000 });
+                    buildParseRecentQueueFn(stdout, true); // seedOnly=true
+                }
+                catch { /* ignore */ }
+                // Step 2: Start real polling after warmup
+                if (dumpsysPollTimer) {
+                    dumpsysPollTimer = setTimeout(runPoll, 0);
+                }
+            }, 0);
+        }
+        else {
+            // Getevent mode (existing behavior)
+            const proc = spawn("adb", ["-s", payload.deviceId, "shell", "getevent", "-lt"], {
+                stdio: ["ignore", "pipe", "pipe"],
+            });
+            activeInputRecording = proc;
+            proc.stdout?.on("data", (data) => {
+                if (inputRecordingBuffer.length >= INPUT_RECORDING_MAX_LINES)
+                    return;
+                inputRecordingBuffer.push(data.toString("utf-8"));
+            });
+            proc.stderr?.on("data", () => { });
+            // Auto-stop after timeout
+            setTimeout(() => {
+                if (activeInputRecording === proc) {
+                    proc.kill("SIGTERM");
+                    activeInputRecording = null;
+                }
+            }, INPUT_RECORDING_TIMEOUT_MS);
+        }
+        return { status: "ok" };
+    });
+    ipcMain.handle("recording.stop", async (_event, _payload) => {
+        if (!activeInputRecording && !dumpsysPollTimer) {
+            return { status: "error", message: "没有正在进行的录制" };
+        }
+        let steps = [];
+        const durationMs = Date.now() - inputRecordingStartTime;
+        if (currentRecordingMode === "dumpsys") {
+            if (dumpsysPollTimer) {
+                clearTimeout(dumpsysPollTimer);
+                dumpsysPollTimer = null;
+            }
+            // One final poll to catch late events
+            try {
+                const { stdout } = await execFileAsync("adb", ["-s", _payload.deviceId, "shell", "dumpsys", "input"], { timeout: 5000 });
+                buildParseRecentQueueFn(stdout);
+            }
+            catch { /* ignore */ }
+            steps = parseDumpsysToSteps();
+        }
+        else {
+            const proc = activeInputRecording;
+            if (proc) {
+                activeInputRecording = null;
+                proc.kill("SIGTERM");
+                await new Promise((resolve) => {
+                    const timer = setTimeout(() => resolve(), 3000);
+                    proc.on("exit", () => { clearTimeout(timer); resolve(); });
+                });
+            }
+            const rawText = inputRecordingBuffer.join("");
+            steps = parseGeteventToSteps(rawText);
+        }
+        return { status: "ok", steps, durationMs, rawLineCount: inputRecordingBuffer.length };
+    });
+    function parseGeteventToSteps(rawText) {
+        const lines = rawText.split("\n");
+        const steps = [];
+        let stepIndex = 0;
+        // getevent -lt format:
+        // [  12345.678901] /dev/input/event0: EV_ABS       ABS_MT_POSITION_X    0000025e
+        const lineRegex = /^\s*\[\s*(\d+\.\d+)\]\s+\/dev\/input\/event(\d+):\s+(\S+)\s+(\S+)\s+(\S+)/;
+        // Touch state (multi-protocol)
+        let touchActive = false;
+        let touchDownX = 0;
+        let touchDownY = 0;
+        let touchDownTime = 0;
+        let lastX = 0;
+        let lastY = 0;
+        // MT Protocol B tracking_id: 0xffffffff = -1 = no touch
+        let currentTrackingId = null;
+        // frame accumulation
+        let frameEvents = [];
+        // Key state
+        let pendingKeyDown = null;
+        for (const line of lines) {
+            const m = line.match(lineRegex);
+            if (!m)
+                continue;
+            const rawType = m[3];
+            const code = m[4];
+            const value = m[5];
+            const timeMs = parseFloat(m[1]) * 1000;
+            if (rawType === "EV_SYN") {
+                // ---- Frame boundary: process accumulated events ----
+                // --- Touch detection via ABS_MT_TRACKING_ID (MT Protocol B) ---
+                const trackingIdEvent = frameEvents.find((fe) => fe.code === "ABS_MT_TRACKING_ID");
+                if (trackingIdEvent) {
+                    const newTid = parseInt(trackingIdEvent.value, 16);
+                    // ffffffff = -1 = finger lifted
+                    if (newTid === -1 && touchActive) {
+                        // Touch UP
+                        touchActive = false;
+                        currentTrackingId = null;
+                        const endX = lastX;
+                        const endY = lastY;
+                        const duration = Math.max(1, Math.round(timeMs - touchDownTime));
+                        const dx = endX - touchDownX;
+                        const dy = endY - touchDownY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const stepId = `recorded-${stepIndex++}`;
+                        if (dist < 30 && duration < 800) {
+                            steps.push({ id: stepId, type: "tap", name: `点击 (${touchDownX}, ${touchDownY})`, value: `${touchDownX},${touchDownY}`, delayMs: "300" });
+                        }
+                        else {
+                            steps.push({ id: stepId, type: "swipe", name: `滑动 (${touchDownX},${touchDownY})→(${endX},${endY})`, value: `${touchDownX},${touchDownY},${endX},${endY},${Math.max(50, duration)}`, delayMs: "300" });
+                        }
+                    }
+                    else if (newTid >= 0 && !touchActive) {
+                        // Touch DOWN via new tracking_id
+                        touchActive = true;
+                        currentTrackingId = newTid;
+                        const posX = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_X");
+                        const posY = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_Y");
+                        touchDownX = posX ? parseInt(posX.value, 16) : lastX;
+                        touchDownY = posY ? parseInt(posY.value, 16) : lastY;
+                        lastX = touchDownX;
+                        lastY = touchDownY;
+                        touchDownTime = timeMs;
+                    }
+                }
+                // --- Fallback: BTN_TOUCH detection (MT Protocol A) ---
+                if (!trackingIdEvent) {
+                    const hasBtnTouch = frameEvents.find((fe) => fe.code === "BTN_TOUCH");
+                    if (hasBtnTouch) {
+                        if (hasBtnTouch.value === "DOWN" && !touchActive) {
+                            touchActive = true;
+                            const posX = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_X");
+                            const posY = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_Y");
+                            touchDownX = posX ? parseInt(posX.value, 16) : lastX;
+                            touchDownY = posY ? parseInt(posY.value, 16) : lastY;
+                            lastX = touchDownX;
+                            lastY = touchDownY;
+                            touchDownTime = timeMs;
+                        }
+                        else if (hasBtnTouch.value === "UP" && touchActive) {
+                            touchActive = false;
+                            const endX = lastX;
+                            const endY = lastY;
+                            const duration = Math.max(1, Math.round(timeMs - touchDownTime));
+                            const dx = endX - touchDownX;
+                            const dy = endY - touchDownY;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            const stepId = `recorded-${stepIndex++}`;
+                            if (dist < 30 && duration < 800) {
+                                steps.push({ id: stepId, type: "tap", name: `点击 (${touchDownX}, ${touchDownY})`, value: `${touchDownX},${touchDownY}`, delayMs: "300" });
+                            }
+                            else {
+                                steps.push({ id: stepId, type: "swipe", name: `滑动 (${touchDownX},${touchDownY})→(${endX},${endY})`, value: `${touchDownX},${touchDownY},${endX},${endY},${Math.max(50, duration)}`, delayMs: "300" });
+                            }
+                        }
+                    }
+                }
+                // --- Key events (excluding touch-related BTN_*) ---
+                const keyEvent = frameEvents.find((fe) => fe.type === "EV_KEY" && fe.code !== "BTN_TOUCH" && fe.code !== "BTN_TOOL_FINGER" && !fe.code.startsWith("BTN_"));
+                if (keyEvent) {
+                    if (keyEvent.value === "DOWN") {
+                        pendingKeyDown = { name: keyEvent.code, valueHex: "" };
+                    }
+                    else if (keyEvent.value === "UP" && pendingKeyDown && pendingKeyDown.name === keyEvent.code) {
+                        const stepId = `recorded-${stepIndex++}`;
+                        const keyName = keyEvent.code.replace(/^KEY_/, "");
+                        steps.push({ id: stepId, type: "key", name: `按键 ${keyName}`, value: `KEYCODE_${keyName}`, delayMs: "200" });
+                        pendingKeyDown = null;
+                    }
+                }
+                frameEvents = [];
+            }
+            else {
+                // Accumulate frame events
+                frameEvents.push({ type: rawType, code, value });
+                // Track position from any frame for lastX/lastY
+                if (code === "ABS_MT_POSITION_X" && rawType === "EV_ABS") {
+                    lastX = parseInt(value, 16);
+                }
+                else if (code === "ABS_MT_POSITION_Y" && rawType === "EV_ABS") {
+                    lastY = parseInt(value, 16);
+                }
+            }
+        }
+        return steps;
+    }
     // Crash/ANR - list files from device
     ipcMain.handle("crash.list", async (_event, payload) => {
         try {
@@ -1313,6 +1711,33 @@ protocol.registerSchemesAsPrivileged([
 ]);
 app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
+    // Initialize state directory in userData (persists across rebuilds)
+    const stateDir = join(app.getPath("userData"), "state");
+    _appStateDir = stateDir;
+    setBackendStateDir(stateDir);
+    const oldStateDir = join(__dirname, "../../backend/state");
+    try {
+        const oldFiles = ["panels.json", "macro_tasks.json", "app-data.json"];
+        await mkdir(stateDir, { recursive: true });
+        for (const f of oldFiles) {
+            const oldPath = join(oldStateDir, f);
+            const newPath = join(stateDir, f);
+            try {
+                const oldStat = await fsStat(oldPath);
+                if (oldStat.isFile()) {
+                    try {
+                        const newStat = await fsStat(newPath);
+                        if (oldStat.mtimeMs <= newStat.mtimeMs)
+                            continue;
+                    }
+                    catch { /* new doesn't exist */ }
+                    await writeFile(newPath, await readFile(oldPath, "utf-8"));
+                }
+            }
+            catch { /* old doesn't exist */ }
+        }
+    }
+    catch { /* migration best-effort */ }
     // Register custom protocol to serve winscope files
     const winscopeRoot = (() => {
         const envPath = process.env.WINSCOPE_PATH;
@@ -1661,7 +2086,7 @@ svg + span.material-icons {
     });
     registerIpcHandlers();
     // Start perf API server for production mode
-    perfApiPort = await startPerfApiServer();
+    perfApiPort = await startPerfApiServer(stateDir);
     console.log(`[Perf API] Server started on port ${perfApiPort}`);
     createWindow();
     createTray();
@@ -1681,5 +2106,9 @@ app.on("before-quit", () => {
     if (tray) {
         tray.destroy();
         tray = null;
+    }
+    // Kill the winscope proxy so it doesn't orphan and pin old cwd
+    if (_winscopeProxyProcess && !_winscopeProxyProcess.killed) {
+        _winscopeProxyProcess.kill("SIGTERM");
     }
 });

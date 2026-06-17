@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { buildCommandString, isToggleParam, getToggleParamValue, getParamInlineText, type CommandParam } from "../lib/catalog";
+import { buildCommandString, isToggleParam, getToggleParamValue, getParamInlineText, type CommandParam, type CommandMeta } from "../lib/catalog";
 
 // ── SVG icon paths from /home/tsdl/ssd/data/icons/ ──
 
@@ -36,7 +36,7 @@ function SvgIcon({ paths, size = 18, color }: { paths: string | string[]; size?:
 
 // ── Component ──
 
-export default function CommandPage({ layout, panelList, panelCommands, workspace, result }: any) {
+export default function CommandPage({ layout, panelList, panelCommands, workspace, result, catalogSearch }: any) {
   const activePanelCommandEntry =
     panelCommands.activePanelCommand ? panelCommands.findCommandEntry(panelCommands.activePanelCommand.commandId) : null;
   const activeCommand = activePanelCommandEntry?.command ?? null;
@@ -81,6 +81,7 @@ export default function CommandPage({ layout, panelList, panelCommands, workspac
             onChange={(e) => {
               panelList.setActivePanelId(e.target.value);
               panelCommands.setActivePanelCommandId("");
+              catalogSearch.setSearchText("");
             }}
           >
             {panelList.panels.map((panel: any) => (
@@ -121,19 +122,34 @@ export default function CommandPage({ layout, panelList, panelCommands, workspac
         <div className="cmdlist-subhead">
           <div>
             <p className="section-kicker">命令列表</p>
-            <h3>{panelList.activePanel?.name ?? "未选择面板"}</h3>
-            <p className="panel-list-subtitle">
-              {panelList.activePanel?.description ?? "请选择一个命令面板，再从弹窗里补充命令块。"}
-            </p>
           </div>
-          <button className="primary-button add-command-button" onClick={() => panelCommands.setCatalogOpen(true)}>
-            添加命令
+          <button className="primary-button compact-button" onClick={() => panelCommands.setCatalogOpen(true)}>
+            + 添加
           </button>
         </div>
-        <div className="panel-command-toolbar">
-          <span className="badge info">命令块 {panelCommands.panelCommands.length}</span>
-          {panelCommands.activePanelCommand ? (
-            <span className="badge success">当前选中：{panelCommands.activePanelCommandTitle}</span>
+        {/* ── 命令搜索框 ── */}
+        <div className="cmd-search-wrap" ref={catalogSearch.searchRef}>
+          <input
+            className="cmd-search-input"
+            type="text"
+            value={catalogSearch.searchText}
+            onChange={(e) => catalogSearch.setSearchText(e.target.value)}
+            placeholder="搜索命令… 输入完整命令可自动解析参数"
+          />
+          {catalogSearch.results.length > 0 ? (
+            <div className="cmd-search-dropdown panel">
+              {catalogSearch.results.map((r: any) => (
+                <button
+                  key={r.command.id}
+                  className="cmd-search-item context-menu-item"
+                  onMouseDown={() => catalogSearch.handleAdd(r)}
+                >
+                  <strong>{r.command.title}</strong>
+                  <span className="cmd-search-summary">{r.command.summary}</span>
+                  <code className="cmd-search-raw">{r.command.raw}</code>
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
         <div className="subcommand-list panel-scroll">
@@ -197,7 +213,28 @@ export default function CommandPage({ layout, panelList, panelCommands, workspac
         </div>
         <div className="param-editor-body panel-scroll">
           {panelCommands.activePanelCommand && activeCommand ? (
-            commandParams.length > 0 ? (
+            <>
+              {/* ── 命令块重命名输入 ── */}
+              <div className="param-editor-rename">
+                <label className="param-field-label">命令块名称</label>
+                <input
+                  className="param-field-input"
+                  type="text"
+                  value={panelCommands.activePanelCommand.title}
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    panelCommands.updateActivePanelCommands((cmds: any[]) =>
+                      cmds.map((b: any) =>
+                        b.id === panelCommands.activePanelCommand.id
+                          ? { ...b, title: newName }
+                          : b
+                      )
+                    );
+                  }}
+                  placeholder="命令块名称"
+                />
+              </div>
+            {commandParams.length > 0 ? (
               <div className="param-editor-fields">
                 {commandParams.map((param: CommandParam) => {
                   if (isToggleParam(param)) {
@@ -246,7 +283,8 @@ export default function CommandPage({ layout, panelList, panelCommands, workspac
                   如需调整，可在右侧工作区直接修改原始命令。
                 </p>
               </div>
-            )
+            )}
+            </>
           ) : (
             <div className="result-empty-state">先在左侧列表选中一个命令块，在此编辑参数。</div>
           )}

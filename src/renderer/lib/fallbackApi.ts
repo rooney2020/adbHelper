@@ -722,5 +722,9 @@ export const fallbackApi: NonNullable<Window["adbHelperApi"]> = {
     capture: async (payload: { deviceId: string; displayId?: number; savePath?: string }) => (await fetchDevApi<{ status: string; dataUrl?: string; savedPath?: string }>(`/api/adb-helper/screen-capture?deviceId=${encodeURIComponent(payload.deviceId)}&displayId=${payload.displayId ?? 0}`)) ?? { status: "error", message: "请求失败" },
     startRecord: async (payload: { deviceId: string; displayId?: number }) => (await postDevApi<{ status: string; remotePath?: string }>("/api/adb-helper/screen-start-record", payload)) ?? { status: "error", message: "请求失败" },
     stopRecord: async (payload: { deviceId: string }) => (await postDevApi<{ status: string; localPath?: string }>("/api/adb-helper/screen-stop-record", payload)) ?? { status: "error", message: "请求失败" }
+  },
+  recording: {
+    start: async (payload: { deviceId: string }) => (await postDevApi<{ status: string }>("/api/adb-helper/recording-start", payload)) ?? { status: "error", message: "请求失败" },
+    stop: async (payload: { deviceId: string }) => (await postDevApi<{ status: string; steps?: any[]; durationMs?: number }>("/api/adb-helper/recording-stop", payload)) ?? { status: "error", message: "请求失败" }
   }
 };

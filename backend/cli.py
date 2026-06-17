@@ -30,7 +30,7 @@ else:
 # Platform-aware home directory
 _HOME = Path.home()
 
-STATE_DIR = Path(__file__).resolve().parent / "state"
+STATE_DIR = Path(os.environ.get("ADB_HELPER_STATE_DIR", str(Path(__file__).resolve().parent / "state")))
 HISTORY_FILE = STATE_DIR / "history.json"
 BACKUP_CONFIG_FILE = STATE_DIR / "backup_config.json"
 LOGCAT_CONFIG_FILE = STATE_DIR / "logcat_config.json"
@@ -73,7 +73,7 @@ WINDOW_ID_PATTERN = re.compile(r"^\s*(0x[0-9a-fA-F]+)\s+\"(?P<title>[^\"]+)\"")
 WINDOW_POSITION_PATTERN = re.compile(r"Absolute upper-left (?P<axis>[XY]):\s+(?P<value>-?\d+)")
 WINDOW_SIZE_PATTERN = re.compile(r"(?P<key>Width|Height):\s+(?P<value>\d+)")
 USER_INFO_PATTERN = re.compile(r"UserInfo\{(?P<id>\d+):(?P<name>[^:]*):(?P<flags>\d+)\}(?P<suffix>.*)")
-PM_PACKAGE_PATTERN = re.compile(r"^package:(?P<path>.+?)=(?P<package>\S+)\s+uid:(?P<uid>\d+)$")
+PM_PACKAGE_PATTERN = re.compile(r"^package:(?P<path>.+)=(?P<package>\S+)\s+uid:(?P<uid>\d+)$")
 PACKAGE_USER_STATE_PATTERN = re.compile(r"^User\s+(?P<id>\d+):\s+(?P<body>.*)$")
 GETPROP_LINE_PATTERN = re.compile(r"^\[(?P<key>[^\]]+)\]:\s+\[(?P<value>[^\]]*)\]$")
 PACKAGE_SECTION_PATTERN = re.compile(r"^Package \[(?P<package>[^\]]+)\]")
@@ -740,6 +740,7 @@ def build_component_detail_entry(name: str, component_type: str) -> dict[str, An
     return {
         "name": name,
         "componentType": component_type,
+        "exported": False,
         "actions": [],
         "categories": [],
         "mimeTypes": [],
@@ -763,6 +764,31 @@ def collect_package_component_snapshot(package_name: str, output: str) -> tuple[
     current_component: str | None = None
     current_component_type: str | None = None
     component_pattern = re.compile(rf"\b{re.escape(package_name)}/([^\s]+)")
+    # Heuristic classification by class name suffix for components
+    type_pattern = re.compile(r"\.([A-Za-z]+)$")
+    TYPE_SUFFIX_MAP = {
+        "activity": "Activity",
+        "service": "Service",
+        "receiver": "Receiver",
+        "provider": "Provider",
+    }
+
+    def _clean_component_name(raw: str) -> str:
+        """Strip trailing punctuation like : } , > from component names."""
+        name = raw.rstrip(":}>,")
+        return name
+
+    def _infer_type(comp_short: str, section_type: str) -> str:
+        """Use class name suffix to determine component type, fallback to section.
+        E.g.: InitializationProvider -> Provider, ImeSourceActivity -> Activity."""
+        tm = type_pattern.search(comp_short)
+        if tm:
+            suffix = tm.group(1)  # e.g. "InitializationProvider"
+            suffix_lower = suffix.lower()
+            for key, mapped in TYPE_SUFFIX_MAP.items():
+                if suffix_lower.endswith(key):
+                    return mapped
+        return section_type
 
     for line in output.splitlines():
         stripped = line.strip()
@@ -775,7 +801,7 @@ def collect_package_component_snapshot(package_name: str, output: str) -> tuple[
             current_component = None
             current_component_type = None
             continue
-        if stripped in {"Packages:", "Queries:", "Package Changes:"}:
+        if stripped in {"Packages:", "Queries:", "Package Changes:", "Registered ContentProviders:", "ContentProvider Authorities:", "Key Set Manager:", "Permissions:", "Domain verification status:"}:
             current_section = None
             current_component = None
             current_component_type = None
@@ -785,9 +811,29 @@ def collect_package_component_snapshot(package_name: str, output: str) -> tuple[
 
         component_match = component_pattern.search(line)
         if component_match:
-            current_component = f"{package_name}/{component_match.group(1)}"
-            append_unique(components[current_section], current_component)
-            detail_entry = component_details.setdefault(current_component, build_component_detail_entry(current_component, current_component_type or current_section))
+            raw_name = component_match.group(1)
+            clean_name = _clean_component_name(raw_name)
+            current_component = f"{package_name}/{clean_name}"
+            if not current_section:
+                continue
+            # Determine actual component type by class name suffix
+            inferred_type = _infer_type(clean_name, current_component_type or current_section)
+            if inferred_type.lower() != current_section:
+                # Reclassify: move to the correct section
+                correct_key = inferred_type.lower() + "s"
+                if correct_key in components:
+                    append_unique(components[correct_key], current_component)
+                else:
+                    append_unique(components[current_section], current_component)
+            else:
+                append_unique(components[current_section], current_component)
+            detail_entry = component_details.setdefault(
+                current_component,
+                build_component_detail_entry(current_component, inferred_type)
+            )
+            # Also update type if it was set from a different section
+            if detail_entry["componentType"] != inferred_type and detail_entry["componentType"] == (current_component_type or current_section):
+                detail_entry["componentType"] = inferred_type
             append_unique(detail_entry["rawLines"], stripped)
             continue
 
@@ -810,6 +856,17 @@ def collect_package_component_snapshot(package_name: str, output: str) -> tuple[
 
         if current_component and not line.startswith("          "):
             current_component = None
+
+    # Also parse exported flag from raw lines where available
+    for detail_entry in component_details.values():
+        for raw_line in detail_entry["rawLines"]:
+            if "exported=" in raw_line:
+                val = raw_line.split("exported=", 1)[1].split()[0].strip().rstrip(",")
+                if val == "true":
+                    detail_entry["exported"] = True
+                elif val == "false":
+                    detail_entry["exported"] = False
+                break
 
     return components, component_details
 
@@ -1128,6 +1185,58 @@ def collect_package_components(package_name: str, output: str) -> dict[str, list
     return components
 
 
+def _parse_manifest_exported(device_id: str, apk_path: str, package_name: str) -> dict[str, bool]:
+    """Extract AndroidManifest.xml from device APK and parse component exported flags.
+    Returns dict mapping short class name -> exported (True/False)."""
+    try:
+        raw = run_adb_bytes(["-s", device_id, "exec-out", "unzip", "-p", apk_path, "AndroidManifest.xml"])
+    except Exception:
+        return {}
+    if not raw or len(raw) < 10:
+        return {}
+    try:
+        from pyaxmlparser import AXMLParser  # type: ignore
+    except ImportError:
+        return {}
+    result: dict[str, bool] = {}
+    try:
+        from io import BytesIO
+        ap = AXMLParser(BytesIO(raw))
+        # Parse events: (event_type, name, attributes, namespace, prefix)
+        # types: START_TAG=1, END_TAG=2, TEXT=3
+        START_TAG, END_TAG = 1, 2
+        token = ap.next()
+        while token is not None:
+            try:
+                event_type = token[0]
+                name = token[1] if len(token) > 1 else None
+                attrs = token[2] if len(token) > 2 else {}
+            except (IndexError, TypeError):
+                token = ap.next()
+                continue
+            if event_type == START_TAG and name in ("activity", "service", "receiver", "provider"):
+                android_exported = None
+                android_name = None
+                if isinstance(attrs, dict):
+                    for attr_ns, attr_val in attrs.items():
+                        if attr_ns and attr_ns[0] == "http://schemas.android.com/apk/res/android":
+                            ns_name = attr_ns[1] if isinstance(attr_ns, (list, tuple)) and len(attr_ns) > 1 else attr_ns[0]
+                        else:
+                            ns_name = attr_ns
+                        if "name" in str(ns_name).split(":")[-1]:
+                            android_name = attr_val.split(".", 1)[-1] if "." in str(attr_val) else str(attr_val)
+                        if "exported" in str(ns_name).split(":")[-1]:
+                            android_exported = str(attr_val).lower() == "true"
+                # Use last segment of name as key
+                if android_name:
+                    short = android_name.split(".")[-1] if "." in str(android_name) else str(android_name)
+                    result[short] = True if android_exported else False
+            token = ap.next()
+    except Exception:
+        pass
+    return result
+
+
 def get_device_app_detail(device_id: str, package_name: str) -> dict[str, Any]:
     output = run_adb(["-s", device_id, "shell", "dumpsys", "package", package_name])
     components, component_details = collect_package_component_snapshot(package_name, output)
@@ -1187,6 +1296,50 @@ def get_device_app_detail(device_id: str, package_name: str) -> dict[str, Any]:
             continue
         if current_list_key and not line.startswith("      "):
             current_list_key = None
+
+    # Second pass: extract exported flag from component sections (not resolver tables)
+    # Component sections look like: "  package/ComponentName targetClass=...:"
+    # Second pass: extract exported flag from component sections under Package
+    # Component sections look like: "      package/ComponentName:"
+    tracked_comp: str | None = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        # Detect component section header: package/ComponentName followed by : or targetClass
+        # Use search because lines are indented, group captures until whitespace/colon/brace
+        comp_match = re.search(
+            rf"\b{re.escape(package_name)}/(\S+?)(?:\(|\s|:|\}}|$)", stripped
+        )
+        if comp_match:
+            raw_name = comp_match.group(1)
+            # Clean trailing punctuation the same way as collect_package_component_snapshot
+            clean_name = raw_name.rstrip(":}>,")
+            comp_full = f"{package_name}/{clean_name}"
+            if comp_full in component_details:
+                tracked_comp = comp_full
+            continue
+        if tracked_comp and "exported=" in stripped:
+            val = stripped.split("exported=", 1)[1].split()[0].strip().rstrip(",")
+            if val in ("true", "false"):
+                component_details[tracked_comp]["exported"] = val == "true"
+                tracked_comp = None
+                continue
+        # Reset if we hit a section switch line with less indentation
+        if tracked_comp and not line.startswith("      "):
+            tracked_comp = None
+
+    # Third pass: parse AndroidManifest.xml from APK to get exported flags
+    # (dumpsys output on Android 12+ doesn't include component attributes)
+    apk_path = detail.get("apkPath", "")
+    if apk_path:
+        manifest_exported = _parse_manifest_exported(device_id, apk_path, package_name)
+        if manifest_exported:
+            for comp_key in list(component_details.keys()):
+                # Extract short class name from component key
+                # Key format: "com.example.pkg/.ShortName" or "com.example.pkg/com.example.pkg.ShortName"
+                _, _, cls_part = comp_key.rpartition("/")
+                short_name = cls_part.rsplit(".", 1)[-1] if "." in cls_part else cls_part
+                if short_name in manifest_exported:
+                    component_details[comp_key]["exported"] = manifest_exported[short_name]
 
     detail["installedUsers"] = sorted(set(detail["installedUsers"]))
     return detail

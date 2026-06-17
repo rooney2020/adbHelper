@@ -1,7 +1,7 @@
 import { Fragment, Suspense, lazy, memo, startTransition, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Icon from "./components/Icon";
 import ReactMarkdown from "react-markdown";
-import { buildCommandString, categories, createDefaultParamValues, isToggleParam, getToggleParamValue, getParamInlineText, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
+import { buildCommandString, categories, createDefaultParamValues, isToggleParam, getToggleParamValue, getParamInlineText, searchCommands, parseRawToCommand, type CommandMeta, type CommandParam, type FilterKey } from "./lib/catalog";
 import { fallbackApi, matchesFilter, normalizeLogcatRefreshIntervalMs, normalizeLogcatLevelSelection, fetchDevApi, postDevApi } from "./lib/fallbackApi";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { renderOutputPreview, renderDiffText, buildDiffRows, buildDiffSegments, getResultPrimaryCommand, getDiffRecordMeta, countOutputLines, copyText, buildExportBaseName, downloadTextFile, downloadBlobFile, decodeBase64ToBlob, buildMarkdownExport, buildTextExport, resolveDiffTarget, highlightText, wrapInMarkdownCodeBlock, historyItemToRunResult } from "./lib/outputRenderers";
@@ -27,7 +27,7 @@ const filters: Array<{ id: FilterKey; label: string }> = [
 const resultTabs = ["structured", "raw", "diff", "history"] as const;
 type ResultTab = (typeof resultTabs)[number];
 type MainView = "command" | "info" | "backup" | "logcat" | "keysim" | "layout" | "dumpsys" | "monkey" | "performance";
-type DeviceInfoTab = "basic" | "files" | "apps" | "users" | "processes" | "screen";
+type DeviceInfoTab = "basic" | "files" | "apps" | "users" | "processes" | "topfocus" | "screen";
 type KeySimTab = "quick" | "visual" | "multitouch" | "macro" | "record";
 type LayoutViewerTab = "winscope" | "inspector";
 type DumpsysTab = "performance" | "battery" | "launch" | "activity" | "window" | "display" | "input" | "power" | "SurfaceFlinger" | "meminfo" | "cpuinfo" | "package" | "connectivity" | "wifi" | "bluetooth_manager" | "audio" | "usb" | "notification" | "procstats" | "alarm";
@@ -106,6 +106,7 @@ const DEVICE_INFO_TABS: Array<{ id: DeviceInfoTab; label: string; description: s
   { id: "apps", label: "应用列表", description: "包名、安装用户、安装包位置与组件详情" },
   { id: "users", label: "用户信息", description: "用户状态、用户上限和 passenger 配置" },
   { id: "processes", label: "进程信息", description: "当前设备所有进程及其归属包名" },
+  { id: "topfocus", label: "Top Focus", description: "获取指定 Display 或 TDA 的 TopFocus 信息" },
   { id: "screen", label: "截屏录屏", description: "对设备进行截屏或录屏操作" },
 ];
 
@@ -532,6 +533,7 @@ interface DeviceAppCatalog {
 interface DeviceAppComponentDetail {
   name: string;
   componentType: string;
+  exported: boolean;
   actions: string[];
   categories: string[];
   mimeTypes: string[];
@@ -2220,6 +2222,7 @@ export default function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(initialWorkspaceWidthsRef.current.leftWidth);
   const [middlePanelWidth, setMiddlePanelWidth] = useState(initialWorkspaceWidthsRef.current.middleWidth);
   const [contextMenuState, setContextMenuState] = useState<ContextMenuState | null>(null);
+  const [importDialog, setImportDialog] = useState<{ commands: PanelCommandBlock[] } | null>(null);
   const [panelDialogState, setPanelDialogState] = useState<PanelDialogState | null>(null);
   const [panelCommandParamDialog, setPanelCommandParamDialog] = useState<PanelCommandParamDialogState | null>(null);
   const [commandRenameDialog, setCommandRenameDialog] = useState<{ blockId: string; name: string } | null>(null);
@@ -2237,7 +2240,7 @@ export default function App() {
   const [adbHealthCheckDialogOpen, setAdbHealthCheckDialogOpen] = useState(false);
   const [devicePopupStyle, setDevicePopupStyle] = useState<CSSProperties>({});
   const [deviceActionPopupStyle, setDeviceActionPopupStyle] = useState<CSSProperties>({});
-  const [deviceActionBusy, setDeviceActionBusy] = useState<"reboot" | "root" | "remount" | null>(null);
+  const [deviceActionBusy, setDeviceActionBusy] = useState<"reboot" | "root" | "remount" | "root-remount" | "reboot-remount" | null>(null);
   const [deviceDisplayCatalog, setDeviceDisplayCatalog] = useState<DeviceDisplayItem[]>([]);
   const [deviceDisplayLoading, setDeviceDisplayLoading] = useState(false);
   const [deviceDisplayMenuOpen, setDeviceDisplayMenuOpen] = useState(false);
@@ -2248,6 +2251,8 @@ export default function App() {
   const [scrcpyAvailable, setScrcpyAvailable] = useState(false);
   const [scrcpyConfigDialog, setScrcpyConfigDialog] = useState<({ deviceId: string; deviceName: string; display: DeviceDisplayItem; config: ScrcpyDisplayConfig; saving: boolean; syncing: boolean; notice: string | null }) | null>(null);
   const [resultSearchTerm, setResultSearchTerm] = useState("");
+  const [cmdSearchText, setCmdSearchText] = useState("");
+  const cmdSearchRef = useRef<HTMLDivElement | null>(null);
   const [rawCommand, setRawCommand] = useState("");
   const [lastRunResult, setLastRunResult] = useState<RunResult | null>(null);
   const [probeResult, setProbeResult] = useState<Record<string, string> | null>(null);
@@ -2280,7 +2285,8 @@ export default function App() {
     { id: "finger-2", startX: "880", startY: "1200", endX: "880", endY: "400", durationMs: "300" },
   ]);
   const [keySimMacroSteps, setKeySimMacroSteps] = useState<KeySimMacroStep[]>(KEY_SIM_DEFAULT_MACRO_STEPS);
-  const [keySimMacroRunning, setKeySimMacroRunning] = useState(false);
+  const [keySimMacroRunningTaskId, setKeySimMacroRunningTaskId] = useState<string | null>(null);
+  const keySimMacroRunning = keySimMacroRunningTaskId !== null;
   const [keySimMacroRepeatProgress, setKeySimMacroRepeatProgress] = useState<{ current: number; total: number } | null>(null);
   const keySimMacroRepeatCancelRef = useRef(false);
   const [keySimMacroTasks, setKeySimMacroTasks] = useState<KeySimMacroTask[]>(loadStoredMacroTasks);
@@ -2288,7 +2294,132 @@ export default function App() {
   const [keySimMacroTaskDraftName, setKeySimMacroTaskDraftName] = useState("");
   const [keySimMacroTaskDialogOpen, setKeySimMacroTaskDialogOpen] = useState(false);
   const [keySimMacroRepeatDialog, setKeySimMacroRepeatDialog] = useState<{ taskId: string; count: string; intervalMs: string } | null>(null);
+  const [dataImportDialog, setDataImportDialog] = useState<{ data: Record<string, unknown>; fileName: string } | null>(null);
   const [keySimMacroAddMenuOpen, setKeySimMacroAddMenuOpen] = useState(false);
+
+  function validateImportData(data: unknown): { valid: false; error: string } | { valid: true } {
+    if (!data || typeof data !== "object") return { valid: false, error: "导入的数据不是有效的 JSON 对象" };
+    const obj = data as Record<string, unknown>;
+    if (obj.version !== 1) return { valid: false, error: "数据版本不匹配，请确认文件来源正确" };
+    if (obj.type !== "adb-helper-all") return { valid: false, error: "这不是 ADB Helper 的导出文件" };
+    const hasPanels = Array.isArray(obj.panels);
+    const hasQuickActions = Array.isArray(obj.quickActions);
+    const hasMacroTasks = Array.isArray(obj.macroTasks);
+    if (!hasPanels && !hasQuickActions && !hasMacroTasks) {
+      return { valid: false, error: "导出文件中未找到有效的面板、快捷动作或编排任务数据" };
+    }
+    if (hasPanels) {
+      for (const panel of obj.panels as unknown[]) {
+        if (!panel || typeof panel !== "object") return { valid: false, error: "面板数据格式错误" };
+        const p = panel as Record<string, unknown>;
+        if (typeof p.id !== "string" || typeof p.name !== "string" || !Array.isArray(p.commands)) {
+          return { valid: false, error: `面板「${p.name ?? "未知"}」缺少 id、name 或 commands 字段` };
+        }
+      }
+    }
+    if (hasQuickActions) {
+      for (const item of obj.quickActions as unknown[]) {
+        if (!item || typeof item !== "object") return { valid: false, error: "快捷动作数据格式错误" };
+        const a = item as Record<string, unknown>;
+        if (typeof a.id !== "string" || typeof a.name !== "string" || typeof a.type !== "string") {
+          return { valid: false, error: `快捷动作「${a.name ?? "未知"}」缺少 id、name 或 type 字段` };
+        }
+      }
+    }
+    if (hasMacroTasks) {
+      for (const task of obj.macroTasks as unknown[]) {
+        if (!task || typeof task !== "object") return { valid: false, error: "编排任务数据格式错误" };
+        const t = task as Record<string, unknown>;
+        if (typeof t.id !== "string" || typeof t.name !== "string" || !Array.isArray(t.steps)) {
+          return { valid: false, error: `编排任务「${t.name ?? "未知"}」缺少 id、name 或 steps 字段` };
+        }
+      }
+    }
+    return { valid: true };
+  }
+
+  function handleExportAllData() {
+    const all: Record<string, unknown> = {
+      version: 1,
+      type: "adb-helper-all",
+      exportTime: new Date().toISOString(),
+      panels,
+      quickActions: keySimQuickActions,
+      macroTasks: keySimMacroTasks,
+    };
+    const blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `adb_helper_all_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleStartImportAll() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const validation = validateImportData(data);
+        if (!validation.valid) {
+          window.alert(`导入数据校验失败：${validation.error}`);
+          return;
+        }
+        setDataImportDialog({ data: data as Record<string, unknown>, fileName: file.name });
+      } catch (err) {
+        window.alert("文件解析失败：" + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    input.click();
+  }
+
+  function applyImportData(data: Record<string, unknown>, mode: "overwrite" | "append") {
+    const fnRegenId = () => crypto.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (Array.isArray(data.panels)) {
+      const panelsData = (data.panels as unknown[]).map((p) => {
+        const panel = p as Record<string, unknown>;
+        return {
+          ...panel,
+          id: fnRegenId(),
+          commands: ((panel.commands as unknown[]) ?? []).map((c) => ({ ...(c as object), id: fnRegenId() })),
+        } as unknown as CommandPanelModel;
+      });
+      if (mode === "append") {
+        setPanels((prev) => [...prev, ...panelsData]);
+      } else {
+        setPanels(panelsData);
+      }
+    }
+    if (Array.isArray(data.quickActions)) {
+      const actions = (data.quickActions as unknown[]).map((item) => ({ ...(item as object), id: fnRegenId() })) as KeySimQuickAction[];
+      if (mode === "append") {
+        setKeySimQuickActions((prev) => [...prev, ...actions]);
+      } else {
+        setKeySimQuickActions(actions);
+      }
+    }
+    if (Array.isArray(data.macroTasks)) {
+      const tasks = (data.macroTasks as unknown[]).map((t) => {
+        const task = t as Record<string, unknown>;
+        return {
+          ...task,
+          id: fnRegenId(),
+          steps: ((task.steps as unknown[]) ?? []).map((s) => ({ ...(s as object), id: fnRegenId() })),
+        } as unknown as KeySimMacroTask;
+      });
+      if (mode === "append") {
+        setKeySimMacroTasks((prev) => [...prev, ...tasks]);
+      } else {
+        setKeySimMacroTasks(tasks);
+      }
+    }
+  }
   const [keySimMacroDraft, setKeySimMacroDraft] = useState<KeySimMacroStep | null>(null);
   const [keySimMacroDraftMode, setKeySimMacroDraftMode] = useState<"create" | "edit">("create");
   const [layoutViewerTab, setLayoutViewerTab] = useState<LayoutViewerTab>("inspector");
@@ -2396,6 +2527,11 @@ export default function App() {
   const [screenRecording, setScreenRecording] = useState(false);
   const [screenDisplayIds, setScreenDisplayIds] = useState<number[]>([0]);
   const [screenRecordResults, setScreenRecordResults] = useState<Array<{ displayId: number; localPath: string }>>([]);
+  const [recordingStatus, setRecordingStatus] = useState<"idle" | "recording" | "done">("idle");
+  const [recordedSteps, setRecordedSteps] = useState<KeySimMacroStep[]>([]);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const [recordingMode, setRecordingMode] = useState<"getevent" | "dumpsys">("getevent");
   const [uiToast, setUiToast] = useState<ToastNotice | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const confirmActionRef = useRef<(() => void) | null>(null);
@@ -3528,7 +3664,7 @@ export default function App() {
 
   // Also load display catalog when screen tab is active
   useEffect(() => {
-    if (activeMainView !== "info" || deviceInfoTab !== "screen" || !currentDeviceId) return;
+    if (activeMainView !== "info" || (deviceInfoTab !== "screen" && deviceInfoTab !== "topfocus") || !currentDeviceId) return;
     if (deviceDisplayCatalog.length > 0) return;
     let disposed = false;
     (async () => {
@@ -3646,6 +3782,17 @@ export default function App() {
   useEffect(() => {
     if (!contextMenuState) {
       return;
+    }
+
+    // Adjust position to keep within viewport
+    if (contextMenuRef.current) {
+      const rect = contextMenuRef.current.getBoundingClientRect();
+      let dx = 0, dy = 0;
+      if (rect.right > window.innerWidth) dx = window.innerWidth - rect.right - 8;
+      if (rect.bottom > window.innerHeight) dy = window.innerHeight - rect.bottom - 8;
+      if (dx || dy) {
+        contextMenuRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
+      }
     }
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -3917,6 +4064,22 @@ export default function App() {
     }
   }
 
+  function duplicatePanelCommand(block: PanelCommandBlock, title: string) {
+    const newBlock: PanelCommandBlock = {
+      ...block,
+      id: makeId("panel-command"),
+      title: `${title} (副本)`,
+    };
+    updateActivePanelCommands((commands) => {
+      const idx = commands.findIndex((b) => b.id === block.id);
+      if (idx < 0) return [...commands, newBlock];
+      const next = [...commands];
+      next.splice(idx + 1, 0, newBlock);
+      return next;
+    });
+    setActivePanelCommandId(newBlock.id);
+  }
+
   async function runPanelCommandBlock(block: PanelCommandBlock) {
     if (!currentDevice) {
       return;
@@ -4021,7 +4184,7 @@ export default function App() {
     }
   }
 
-  function handleContextMenuAction(action: "modify" | "delete" | "rename") {
+  function handleContextMenuAction(action: "modify" | "delete" | "rename" | "duplicate" | "copyCommand" | "exportPanel" | "importPanel") {
     if (!contextMenuState) {
       return;
     }
@@ -4029,6 +4192,34 @@ export default function App() {
     if (contextMenuState.kind === "panel") {
       if (action === "modify") {
         openEditPanelDialog(contextMenuState.targetId);
+      } else if (action === "exportPanel") {
+        const panel = panels.find((p) => p.id === contextMenuState.targetId);
+        if (panel) {
+          const blob = new Blob([JSON.stringify(panel.commands, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `panel-${panel.name}-commands.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      } else if (action === "importPanel") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          try {
+            const text = await file.text();
+            const commands: PanelCommandBlock[] = JSON.parse(text);
+            if (!Array.isArray(commands)) throw new Error("数据格式错误");
+            setImportDialog({ commands });
+          } catch (err) {
+            window.alert("导入失败：" + (err instanceof Error ? err.message : String(err)));
+          }
+        };
+        input.click();
       } else {
         deletePanel(contextMenuState.targetId);
       }
@@ -4038,6 +4229,19 @@ export default function App() {
       const block = panelCommands.find((b) => b.id === contextMenuState.targetId);
       if (block) {
         setCommandRenameDialog({ blockId: block.id, name: block.title });
+      }
+    } else if (action === "duplicate") {
+      const block = panelCommands.find((b) => b.id === contextMenuState.targetId);
+      if (block) {
+        const cmdEntry = findCommandEntry(block.commandId);
+        const blockCommand = cmdEntry?.command ?? null;
+        const blockTitle = getPanelCommandTitle(block, blockCommand);
+        duplicatePanelCommand(block, blockTitle);
+      }
+    } else if (action === "copyCommand") {
+      const block = panelCommands.find((b) => b.id === contextMenuState.targetId);
+      if (block && block.rawCommand) {
+        navigator.clipboard.writeText(block.rawCommand).catch(() => {});
       }
     } else {
       handleDeletePanelCommand(contextMenuState.targetId);
@@ -4098,6 +4302,47 @@ export default function App() {
     setCatalogOpen(false);
     setRawCommand(nextBlock.rawCommand);
   }
+
+  function handleAddSearchCommand(result: { command: CommandMeta; categoryId: string }) {
+    if (!activePanelId) return;
+    const inputText = cmdSearchText.trim();
+
+    // Try smart parsing: if input is a full command, extract params
+    const parsed = parseRawToCommand(categories, inputText);
+    let block: PanelCommandBlock;
+
+    if (parsed && parsed.command.id === result.command.id) {
+      block = {
+        id: makeId("panel-command"),
+        commandId: parsed.command.id,
+        title: getCommandSubject(parsed.command),
+        summary: parsed.command.summary,
+        params: parsed.params,
+        rawCommand: inputText
+      };
+    } else {
+      block = createPanelCommandBlock(result.command);
+    }
+
+    setPanels((current) => current.map((panel) => panel.id === activePanelId ? {
+      ...panel,
+      commands: [...panel.commands, block]
+    } : panel));
+    setActivePanelCommandId(block.id);
+    setRawCommand(block.rawCommand);
+    setCmdSearchText("");
+  }
+
+  // Click-away for cmd search dropdown
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (cmdSearchRef.current && !cmdSearchRef.current.contains(e.target as Node)) {
+        setCmdSearchText("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   function handleSaveCustomCommand() {
     const { title, template, paramOverrides } = customCommandDraft;
@@ -5149,6 +5394,7 @@ export default function App() {
       detail: detail ?? {
         name: componentName,
         componentType: "组件",
+        exported: false,
         actions: [],
         categories: [],
         mimeTypes: [],
@@ -5158,6 +5404,27 @@ export default function App() {
         rawLines: []
       }
     });
+  }
+
+  async function handleLaunchActivity(componentName: string) {
+    if (!currentDeviceId || !deviceAppDetail) return;
+    const cmd = `adb shell am start -W -n ${componentName}`;
+    setDeviceAppActionBusy(`activity-start-${componentName}`);
+    try {
+      const result = await runtimeApi.command.run({
+        deviceId: currentDeviceId,
+        commandId: `activity-start-${Date.now()}`,
+        commandTitle: `启动 ${componentName}`,
+        rawCommand: cmd,
+        args: [],
+      });
+      const msg = (result as any)?.message ?? (result as any)?.stdout ?? "已执行";
+      setDeviceAppActionResult({ label: "启动结果", path: "", text: msg });
+    } catch (err: any) {
+      setDeviceAppActionResult({ label: "启动失败", path: "", text: err?.message ?? String(err) });
+    } finally {
+      setDeviceAppActionBusy(null);
+    }
   }
 
   async function refreshLogcatState(deviceId = currentDeviceId) {
@@ -5298,12 +5565,27 @@ export default function App() {
   function openDeviceDisplayMenu(anchor: HTMLElement) {
     clearDeviceDisplayCloseTimer();
     const rect = anchor.getBoundingClientRect();
-    const width = 320;
+    const width = Math.min(320, window.innerWidth - 24);
+    const maxHeight = Math.min(window.innerHeight - 24, 520);
+    const top = Math.max(12, Math.min(rect.top, window.innerHeight - maxHeight - 12));
+    // Try left side first; if it overflows, flip to right side
+    const preferredLeft = rect.left - width - 8;
+    const fallbackLeft = rect.right + 8;
+    let left: number;
+    if (preferredLeft >= 12) {
+      left = preferredLeft;
+    } else if (fallbackLeft + width <= window.innerWidth - 12) {
+      left = fallbackLeft;
+    } else {
+      // Neither side fits; clamp to viewport
+      left = 12;
+    }
     setDeviceDisplayPopupStyle({
       width,
-      top: rect.top,
-      left: Math.max(12, rect.left - width - 8),
-      maxHeight: Math.min(window.innerHeight - 24, 520),
+      top,
+      left,
+      maxHeight,
+      overflowY: "auto" as const,
     });
     setDeviceDisplayMenuOpen(true);
   }
@@ -5350,34 +5632,38 @@ export default function App() {
     }, 120);
   }
 
-  async function runDeviceMaintenanceAction(action: "reboot" | "root" | "remount") {
+  async function runDeviceMaintenanceAction(action: "reboot" | "root" | "remount" | "root-remount" | "reboot-remount") {
     if (!currentDevice || deviceActionBusy) {
       return;
     }
 
-    const actionMeta = {
-      reboot: { commandId: "custom", commandTitle: "重启设备", rawCommand: "reboot" },
-      root: { commandId: "custom", commandTitle: "root 设备", rawCommand: "root" },
-      remount: { commandId: "custom", commandTitle: "remount 设备", rawCommand: "remount" },
-    } as const;
+    const actionMeta: Record<string, { commandId: string; commandTitle: string; rawCommands: string[] }> = {
+      reboot: { commandId: "custom", commandTitle: "重启设备", rawCommands: ["reboot"] },
+      root: { commandId: "custom", commandTitle: "root 设备", rawCommands: ["root"] },
+      remount: { commandId: "custom", commandTitle: "remount 设备", rawCommands: ["remount"] },
+      "root-remount": { commandId: "custom", commandTitle: "root 并 remount 设备", rawCommands: ["root", "remount"] },
+      "reboot-remount": { commandId: "custom", commandTitle: "重启并 remount 设备", rawCommands: ["reboot", "wait-for-device", "root", "remount"] },
+    };
 
     setDeviceActionBusy(action);
     try {
       const meta = actionMeta[action];
-      const response = await runtimeApi.command.run({
-        deviceId: currentDevice.id,
-        deviceName: currentDevice.name,
-        commandId: meta.commandId,
-        commandTitle: meta.commandTitle,
-        rawCommand: meta.rawCommand,
-        args: [],
-      });
-      const runResult = { ...(response as RunResult), duration: 0 };
-      setLastRunResult(runResult);
+      for (const cmd of meta.rawCommands) {
+        const response = await runtimeApi.command.run({
+          deviceId: currentDevice.id,
+          deviceName: currentDevice.name,
+          commandId: meta.commandId,
+          commandTitle: meta.commandTitle,
+          rawCommand: cmd,
+          args: [],
+        });
+        const runResult = { ...(response as RunResult), duration: 0 };
+        setLastRunResult(runResult);
+      }
       setDeviceActionOpen(false);
       setDeviceDisplayMenuOpen(false);
       await refreshHistoryList();
-      if (action === "reboot") {
+      if (action === "reboot" || action === "reboot-remount") {
         setDeviceOpen(false);
       }
     } finally {
@@ -6328,12 +6614,12 @@ export default function App() {
     return value;
   }
 
-  async function handleRunMacroSteps(steps: KeySimMacroStep[], taskName: string) {
+  async function handleRunMacroSteps(steps: KeySimMacroStep[], taskName: string, runningTaskId?: string | null) {
     if (!steps.length) {
       setKeySimNotice("请先添加宏步骤");
       return;
     }
-    setKeySimMacroRunning(true);
+    setKeySimMacroRunningTaskId(runningTaskId ?? "");
     setKeySimNotice(null);
     try {
       for (let index = 0; index < steps.length; index++) {
@@ -6354,7 +6640,7 @@ export default function App() {
       }
       setKeySimNotice(`${taskName} 执行完成`);
     } finally {
-      setKeySimMacroRunning(false);
+      setKeySimMacroRunningTaskId(null);
     }
   }
 
@@ -6397,6 +6683,45 @@ export default function App() {
       }
     }
     setKeySimMacroRepeatProgress(null);
+  }
+
+  // Recording timer ref
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function handleStartRecording() {
+    if (!currentDeviceId) { setKeySimNotice("请先选择设备"); return; }
+    setRecordingStatus("recording");
+    setRecordedSteps([]);
+    setRecordingDuration(0);
+    setRecordingElapsed(0);
+    const result = await runtimeApi.recording.start({ deviceId: currentDeviceId, mode: recordingMode });
+    if (result.status !== "ok") {
+      setRecordingStatus("idle");
+      setKeySimNotice(result.message || "开始录制失败");
+      return;
+    }
+    // Start elapsed timer
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingElapsed((prev) => prev + 1);
+    }, 1000);
+  }
+
+  async function handleStopRecording() {
+    if (!currentDeviceId) return;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    const result = await runtimeApi.recording.stop({ deviceId: currentDeviceId });
+    if (result.status !== "ok" || !result.steps) {
+      setRecordingStatus("idle");
+      setKeySimNotice(result.message || "停止录制失败");
+      return;
+    }
+    const steps = result.steps as KeySimMacroStep[];
+    setRecordedSteps(steps);
+    setRecordingDuration(result.durationMs ?? 0);
+    setRecordingStatus("done");
   }
 
   async function startInfiniteExecution(task: KeySimMacroTask) {
@@ -6486,6 +6811,21 @@ export default function App() {
     );
   }
 
+  // ── Catalog search results ──
+  const cmdSearchResults = useMemo(
+    () => searchCommands(categories, cmdSearchText, 15),
+    [cmdSearchText]
+  );
+
+  // ── Catalog search prop bundle ──
+  const catalogSearchProp = useMemo(() => ({
+    searchText: cmdSearchText,
+    setSearchText: setCmdSearchText,
+    searchRef: cmdSearchRef,
+    results: cmdSearchResults,
+    handleAdd: handleAddSearchCommand,
+  }), [cmdSearchText, cmdSearchResults, handleAddSearchCommand]);
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -6547,6 +6887,22 @@ export default function App() {
             title="刷新设备列表"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          </button>
+          <button
+            className="icon-button"
+            onClick={handleStartImportAll}
+            aria-label="导入全部数据"
+            title="导入全部数据"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button
+            className="icon-button"
+            onClick={handleExportAllData}
+            aria-label="导出全部数据"
+            title="导出全部数据"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
           <button
             className="icon-button settings-button"
@@ -6644,6 +7000,14 @@ export default function App() {
               <button className="device-action-item" disabled={!currentDevice || deviceActionBusy !== null} onClick={() => void runDeviceMaintenanceAction("remount")}>
                 <span>remount 设备</span>
                 <span className="device-action-meta">{deviceActionBusy === "remount" ? "执行中..." : "adb remount"}</span>
+              </button>
+              <button className="device-action-item" disabled={!currentDevice || deviceActionBusy !== null} onClick={() => void runDeviceMaintenanceAction("root-remount")}>
+                <span>root 并 remount 设备</span>
+                <span className="device-action-meta">{deviceActionBusy === "root-remount" ? "执行中..." : "adb root + remount"}</span>
+              </button>
+              <button className="device-action-item" disabled={!currentDevice || deviceActionBusy !== null} onClick={() => void runDeviceMaintenanceAction("reboot-remount")}>
+                <span>重启并 remount 设备</span>
+                <span className="device-action-meta">{deviceActionBusy === "reboot-remount" ? "执行中..." : "adb remount + reboot"}</span>
               </button>
               <div
                 className={`device-action-item device-action-item-submenu ${!currentDevice ? "device-action-item-disabled" : ""}`}
@@ -6809,6 +7173,7 @@ export default function App() {
             summarizeOutputToSingleLine,
             historyItemToRunResult,
           }}
+          catalogSearch={catalogSearchProp}
         />
       ) : null}
 
@@ -6886,6 +7251,7 @@ export default function App() {
             isPrivilegedApkPath,
             deviceAppActionResult,
             handleOpenComponentDetail,
+            handleLaunchActivity,
             deviceAppComponentSections,
             deferredDeviceAppPermissionFilter,
             DeviceAppListButton,
@@ -6941,7 +7307,7 @@ export default function App() {
           currentDeviceLabel={currentDeviceLabel}
           hasCurrentDevice={Boolean(currentDevice)}
           keySimBusy={keySimBusy}
-          keySimMacroRunning={keySimMacroRunning}
+          keySimMacroRunningTaskId={keySimMacroRunningTaskId}
           keySimMacroRepeatProgress={keySimMacroRepeatProgress}
           onCancelMacroRepeat={() => { keySimMacroRepeatCancelRef.current = true; }}
           keySimTabs={KEY_SIM_TABS}
@@ -6989,6 +7355,7 @@ export default function App() {
           onRunMultiTouchSwipe={handleRunMultiTouchSwipe}
           openCreateMacroTask={openCreateMacroTask}
           keySimMacroTasks={keySimMacroTasks}
+          setKeySimMacroTasks={setKeySimMacroTasks}
           onRunMacroTask={handleRunMacroTask}
           setKeySimMacroRepeatDialog={setKeySimMacroRepeatDialog}
           startInfiniteExecution={startInfiniteExecution}
@@ -7014,6 +7381,14 @@ export default function App() {
           saveMacroDraft={saveMacroDraft}
           keySimMacroRepeatDialog={keySimMacroRepeatDialog}
           handleRunMacroTaskRepeated={handleRunMacroTaskRepeated}
+          recordingStatus={recordingStatus}
+          recordedSteps={recordedSteps}
+          recordingDuration={recordingDuration}
+          recordingElapsed={recordingElapsed}
+          recordingMode={recordingMode}
+          setRecordingMode={setRecordingMode}
+          onStartRecording={handleStartRecording}
+          onStopRecording={handleStopRecording}
         />
       ) : null}
 
@@ -7231,9 +7606,22 @@ export default function App() {
           style={{ top: contextMenuState.y, left: contextMenuState.x }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button className="context-menu-item" onClick={() => handleContextMenuAction("modify")}>{contextMenuState.kind === "panel" ? "修改" : "编辑参数"}</button>
-          {contextMenuState.kind === "command" ? <button className="context-menu-item" onClick={() => handleContextMenuAction("rename")}>重命名</button> : null}
-          <button className="context-menu-item context-menu-item-danger" onClick={() => handleContextMenuAction("delete")}>删除</button>
+          {contextMenuState.kind === "panel" ? (
+            <>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("modify")}>修改</button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("exportPanel")}>导出面板</button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("importPanel")}>导入面板</button>
+              <button className="context-menu-item context-menu-item-danger" onClick={() => handleContextMenuAction("delete")}>删除</button>
+            </>
+          ) : (
+            <>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("modify")}>编辑参数</button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("rename")}>重命名</button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("duplicate")}>复制（创建副本）</button>
+              <button className="context-menu-item" onClick={() => handleContextMenuAction("copyCommand")}>复制命令</button>
+              <button className="context-menu-item context-menu-item-danger" onClick={() => handleContextMenuAction("delete")}>删除</button>
+            </>
+          )}
         </div>
       ) : null}
 
@@ -7483,9 +7871,20 @@ export default function App() {
                 <h3>{deviceComponentDialog.componentName}</h3>
               </div>
               <button className="ghost-button compact-button" onClick={() => setDeviceComponentDialog(null)}>关闭</button>
+              {deviceComponentDialog.detail.componentType === "Activity" ? (
+                <button type="button"
+                  className="ghost-button compact-button"
+                  title={`adb shell am start -W -n ${deviceComponentDialog.componentName}`}
+                  onClick={() => handleLaunchActivity(deviceComponentDialog.componentName)}
+                  style={{ fontSize: "11px", padding: "1px 6px", minWidth: "auto" }}
+                >
+                  ▶ 启动
+                </button>
+              ) : null}
             </div>
             <div className="page-header-badges">
               <span className="badge info">{deviceComponentDialog.detail.componentType}</span>
+
               <span className="badge">Action {deviceComponentDialog.detail.actions.length}</span>
               <span className="badge">Mime {deviceComponentDialog.detail.mimeTypes.length}</span>
             </div>
@@ -8199,6 +8598,99 @@ export default function App() {
               <button className="primary-button" disabled={!activeCatalogCommand || !activePanel} onClick={handleAddCommandToPanel}>添加到面板</button>
             </div>
             )}
+          </div>
+        </>
+      ) : null}
+
+      {importDialog ? (
+        <>
+          <div className="catalog-modal-scrim" onClick={() => setImportDialog(null)} />
+          <div className="catalog-modal panel" onClick={(event) => event.stopPropagation()}>
+            <div className="catalog-modal-header">
+              <div>
+                <p className="section-kicker">导入面板</p>
+              </div>
+              <button className="ghost-button" onClick={() => setImportDialog(null)}>取消</button>
+            </div>
+            <div className="import-dialog-body">
+              <p style={{ margin: "16px 0", lineHeight: 1.6, color: "var(--text-secondary, #666)" }}>
+                已解析到 <strong>{importDialog.commands.length}</strong> 条命令选择操作方式：
+              </p>
+              <div className="import-option-list">
+                <button className="import-option-card" onClick={() => {
+                  const newPanel: CommandPanelModel = {
+                    id: makeId("panel"),
+                    name: `${activePanel?.name ?? "面板"} (导入)`,
+                    description: "",
+                    commands: importDialog.commands.map((c) => ({ ...c, id: makeId("panel-command") })),
+                  };
+                  setPanels((prev) => [...prev, newPanel]);
+                  setImportDialog(null);
+                }}>
+                  <strong>导入新面板</strong>
+                  <span>创建一个新面板，将导入的命令放入其中</span>
+                </button>
+                <button className="import-option-card" onClick={() => {
+                  updateActivePanelCommands(() => importDialog.commands.map((c) => ({ ...c, id: makeId("panel-command") })));
+                  setImportDialog(null);
+                }}>
+                  <strong>覆盖本面板</strong>
+                  <span>用导入的命令替换当前面板的全部命令</span>
+                </button>
+                <button className="import-option-card" onClick={() => {
+                  updateActivePanelCommands((prev) => [...prev, ...importDialog.commands.map((c) => ({ ...c, id: makeId("panel-command") }))]);
+                  setImportDialog(null);
+                }}>
+                  <strong>追加到本面板</strong>
+                  <span>将导入的命令追加到当前面板末尾</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {dataImportDialog ? (
+        <>
+          <div className="catalog-modal-scrim" onClick={() => setDataImportDialog(null)} />
+          <div className="catalog-modal panel" onClick={(event) => event.stopPropagation()}>
+            <div className="catalog-modal-header">
+              <div>
+                <p className="section-kicker">导入全部数据</p>
+              </div>
+              <button className="ghost-button" onClick={() => setDataImportDialog(null)}>取消</button>
+            </div>
+            <div className="import-dialog-body">
+              <p style={{ margin: "16px 0", lineHeight: 1.6, color: "var(--text-secondary, #666)" }}>
+                确认导入来自 <strong>{dataImportDialog.fileName}</strong> 的数据？
+                <br />此操作将<strong style={{ color: "var(--danger-color, #e74c3c)" }}>替换</strong>全部现有数据！
+              </p>
+              <p style={{ margin: "0 0 16px", lineHeight: 1.6, color: "var(--text-secondary, #666)" }}>
+                已解析到面板 <strong>{Array.isArray(dataImportDialog.data.panels) ? (dataImportDialog.data.panels as unknown[]).length : 0}</strong> 个、
+                快捷动作 <strong>{Array.isArray(dataImportDialog.data.quickActions) ? (dataImportDialog.data.quickActions as unknown[]).length : 0}</strong> 条、
+                编排任务 <strong>{Array.isArray(dataImportDialog.data.macroTasks) ? (dataImportDialog.data.macroTasks as unknown[]).length : 0}</strong> 条
+              </p>
+              <div className="import-option-list">
+                <button className="import-option-card" onClick={() => {
+                  applyImportData(dataImportDialog.data, "overwrite");
+                  setDataImportDialog(null);
+                }}>
+                  <strong>覆盖导入</strong>
+                  <span>替换全部现有数据</span>
+                </button>
+                <button className="import-option-card" onClick={() => {
+                  applyImportData(dataImportDialog.data, "append");
+                  setDataImportDialog(null);
+                }}>
+                  <strong>追加导入</strong>
+                  <span>保留现有数据，将导入的内容追加到末尾</span>
+                </button>
+                <button className="import-option-card" onClick={() => setDataImportDialog(null)}>
+                  <strong>取消</strong>
+                  <span>放弃导入，不做任何更改</span>
+                </button>
+              </div>
+            </div>
           </div>
         </>
       ) : null}

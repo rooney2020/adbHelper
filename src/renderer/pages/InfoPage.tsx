@@ -42,6 +42,172 @@ function VideoPlayer({ item }: { item: any }) {
   );
 }
 
+function TopFocusPanel({ currentDeviceId, runtimeApi, deviceDisplayCatalog }: { currentDeviceId: string | null; runtimeApi: any; deviceDisplayCatalog: any[] }) {
+  // Use a state that updates when deviceDisplayCatalog loads asynchronously
+  const [displays, setDisplays] = useState<{ displayId: number; label?: string }[]>(
+    () => deviceDisplayCatalog.length > 0
+      ? deviceDisplayCatalog
+      : [{ displayId: 0, label: "默认" }]
+  );
+  const [queryId, setQueryId] = useState(String(displays[0]?.displayId ?? "0"));
+  const [result, setResult] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reactively update displays when catalog loads later
+  useEffect(() => {
+    if (deviceDisplayCatalog.length > 0) {
+      setDisplays(deviceDisplayCatalog);
+      // If current queryId isn't in the new catalog, switch to first
+      if (!deviceDisplayCatalog.some((d: any) => String(d.displayId) === queryId)) {
+        setQueryId(String(deviceDisplayCatalog[0].displayId));
+      }
+    }
+  }, [deviceDisplayCatalog]);
+
+  async function fetchTopFocus(displayId: string) {
+    if (!currentDeviceId) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      // Use dumpsys activity activities — structured per-Display with topResumedActivity + mFocusedApp
+      const rawCommand = `adb shell dumpsys activity activities`;
+      const response = await runtimeApi.command.run({
+        deviceId: currentDeviceId,
+        commandTitle: `获取 Display ${displayId} TopFocus`,
+        rawCommand,
+        args: [],
+      });
+      const stdout = (response as any)?.stdout ?? "";
+      const message = (response as any)?.message ?? "";
+      if (!stdout && message) {
+        setError(message);
+        return;
+      }
+      // Parse per-Display sections: find Display #N header, then the next topResumedActivity
+      const lines = stdout.split("\n");
+      let currentDisplay: string | null = null;
+      const displayFoci: Record<string, string[]> = {};
+      for (const line of lines) {
+        const dm = line.match(/Display\s+#(\d+)\s*\(/);
+        if (dm) {
+          currentDisplay = dm[1];
+          if (!displayFoci[currentDisplay]) displayFoci[currentDisplay] = [];
+          continue;
+        }
+        if (currentDisplay) {
+          const trimmed = line.trim();
+          // Skip task/history lines, only keep key focus info
+          if (/^topResumedActivity=|^mFocusedApp=/.test(trimmed)) {
+            displayFoci[currentDisplay]!.push(trimmed);
+          }
+        }
+      }
+      // Also parse the global mFocusedApp lines at the end
+      // (they map one-to-one with Display sections in order)
+      const allDisplays = Object.keys(displayFoci);
+      const globalFocused: string[] = [];
+      for (const line of lines) {
+        const m = line.match(/^\s*mFocusedApp=(ActivityRecord\{.*\})$/);
+        if (m) globalFocused.push(m[1]);
+      }
+      // Match global mFocusedApp to displays by index
+      const displayIndex = allDisplays.indexOf(displayId);
+      const pairedFocused = displayIndex >= 0 && displayIndex < globalFocused.length
+        ? globalFocused[displayIndex]
+        : null;
+
+      const foci = displayFoci[displayId];
+      if (foci && foci.length > 0) {
+        const outLines: string[] = [];
+        const resumed = foci.find(l => l.startsWith("topResumedActivity="));
+        const focused = foci.find(l => l.startsWith("mFocusedApp="));
+        if (resumed) outLines.push(resumed.replace(/^topResumedActivity=/, "焦点 Activity: "));
+        if (focused) outLines.push(focused.replace(/^mFocusedApp=/, "当前聚焦: "));
+        else if (pairedFocused) outLines.push(`当前聚焦: ${pairedFocused}`);
+        setResult(outLines.length > 0 ? outLines.join("\n") : "该 Display 没有当前聚焦窗口。");
+      } else {
+        setResult("该 Display 没有当前聚焦窗口。");
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "请求失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Auto-fetch on mount and on display selection change
+  useEffect(() => {
+    if (currentDeviceId && queryId) {
+      void fetchTopFocus(queryId);
+    }
+  }, [currentDeviceId, queryId]);
+
+  return (
+    <div>
+      <p className="section-kicker">Top Focus 查询</p>
+      <p className="panel-list-subtitle" style={{ marginBottom: "16px" }}>
+        通过 <code>dumpsys window</code> 获取当前聚焦窗口信息。
+      </p>
+
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" }}>
+        {displays.map((d: any) => {
+          const active = String(d.displayId) === queryId;
+          return (
+            <button
+              key={d.displayId}
+              type="button"
+              className={active ? "primary-button compact-button" : "ghost-button compact-button"}
+              onClick={() => { if (!active) { setQueryId(String(d.displayId)); setResult(null); setError(null); } }}
+              style={{ fontSize: "13px", padding: "6px 14px" }}
+            >
+              Display {d.displayId}{d.label ? ` · ${d.label}` : ""}
+            </button>
+          );
+        })}
+        {loading ? <span className="badge info">查询中...</span> : null}
+      </div>
+
+      {error ? <div className="result-empty-state" style={{ color: "#c62828" }}>{error}</div> : null}
+
+      {result ? (
+        <div>
+          <p style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>
+            Display {queryId} 当前聚焦窗口：
+          </p>
+          <pre style={{
+            background: "#f5f5f5",
+            border: "1px solid #eee",
+            borderRadius: "8px",
+            padding: "12px",
+            fontSize: "12px",
+            lineHeight: 1.5,
+            overflow: "auto",
+            maxHeight: "480px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+            fontFamily: "monospace",
+          }}>
+            {result}
+          </pre>
+          <button
+            className="ghost-button"
+            style={{ marginTop: "8px", fontSize: "12px" }}
+            onClick={() => void fetchTopFocus(queryId)}
+          >
+            手动刷新
+          </button>
+        </div>
+      ) : null}
+
+      {!result && !error && !loading ? (
+        <div className="result-empty-state">正在获取 Display {queryId} 的窗口信息...</div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoTab, basic, files, apps, users, processes, screen, shared }: any) {
   const DeviceAppListButton = apps.DeviceAppListButton;
   const DeviceProcessTableRow = processes.DeviceProcessTableRow;
@@ -458,11 +624,26 @@ export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoT
                               </div>
                               {section.items.length ? (
                                 <div className="device-info-token-list">
-                                  {section.items.map((item: string) => (
-                                    <button type="button" className="token-chip token-chip-button" key={item} onClick={() => apps.handleOpenComponentDetail(item)}>
-                                      {item}
-                                    </button>
-                                  ))}
+                                  {section.items.map((item: string) => {
+                                    const isActivity = section.label === "Activity";
+                                    return (
+                                      <div key={item} style={{ display: "inline-flex", alignItems: "center", gap: "4px", margin: "2px" }}>
+                                        <button type="button" className="token-chip token-chip-button" onClick={() => apps.handleOpenComponentDetail(item)}>
+                                          {item}
+                                        </button>
+                                        {isActivity ? (
+                                          <button type="button"
+                                            className="ghost-button compact-button"
+                                            title={`adb shell am start -W -n ${item}`}
+                                            onClick={(e) => { e.stopPropagation(); void apps.handleLaunchActivity?.(item); }}
+                                            style={{ fontSize: "11px", padding: "1px 6px", minWidth: "auto" }}
+                                          >
+                                            ▶ 启动
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="result-empty-state">未识别到 {section.label} 条目。</div>
@@ -666,6 +847,14 @@ export default function InfoPage({ deviceInfoTabs, deviceInfoTab, setDeviceInfoT
                   </div>
                 ) : null}
               </>
+            ) : null}
+
+            {deviceInfoTab === "topfocus" ? (
+              <TopFocusPanel
+                currentDeviceId={shared.currentDeviceId}
+                runtimeApi={shared.runtimeApi}
+                deviceDisplayCatalog={screen.deviceDisplayCatalog}
+              />
             ) : null}
 
             {deviceInfoTab === "screen" ? (

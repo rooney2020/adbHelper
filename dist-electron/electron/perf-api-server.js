@@ -29,13 +29,9 @@ function execFileAsync(file, args, options = {}) {
         });
     });
 }
-const panelsFilePath = join(__dirname, "../../backend/state/panels.json");
-const macroTasksFilePath = join(__dirname, "../../backend/state/macro_tasks.json");
-const scenariosFilePath = join(__dirname, "../../backend/state/perf_scenarios.json");
-const baselinesFilePath = join(__dirname, "../../backend/state/perf_baselines.json");
 /** Fixed port for perf API server to preserve localStorage origin across restarts */
 const FIXED_PORT = 23456;
-export function startPerfApiServer() {
+export function startPerfApiServer(_stateRoot) {
     return new Promise((resolve, reject) => {
         const distRoot = join(__dirname, "../../dist");
         const server = createServer(async (req, res) => {
@@ -46,7 +42,7 @@ export function startPerfApiServer() {
             }
             // ── API routes ────────────────────────────────────────────────────────
             if (req.url.startsWith("/api/adb-helper/")) {
-                await handleApiRoute(req, res);
+                await handleApiRoute(req, res, _stateRoot);
                 return;
             }
             // ── Static file serving ───────────────────────────────────────────────
@@ -91,7 +87,13 @@ export function startPerfApiServer() {
         });
     });
 }
-async function handleApiRoute(req, res) {
+async function handleApiRoute(req, res, stateDir) {
+    const defaultRoot = join(__dirname, "../../backend/state");
+    const activeStateDir = stateDir ?? defaultRoot;
+    const panelsFilePath = join(activeStateDir, "panels.json");
+    const macroTasksFilePath = join(activeStateDir, "macro_tasks.json");
+    const scenariosFilePath = join(activeStateDir, "perf_scenarios.json");
+    const baselinesFilePath = join(activeStateDir, "perf_baselines.json");
     const url = new URL(req.url, "http://localhost");
     const route = url.pathname.replace("/api/adb-helper/", "");
     try {

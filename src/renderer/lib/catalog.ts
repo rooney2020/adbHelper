@@ -21,6 +21,10 @@ export type CommandMeta = {
   favorite?: boolean;
   params?: CommandParam[];
   compose?: (values: Record<string, string>) => string;
+  /** 手动标记 flag→paramKey 映射，优先级高于 compose 自动检测 */
+  flagMap?: Record<string, string>;
+  /** 手动标记 toggle 类 flag 列表 */
+  toggles?: string[];
 };
 
 export type Category = {
@@ -395,7 +399,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "devices",
-        title: "adb devices [-l]",
+        title: "adb devices",
         summary: "列出设备、传输方式和基础标识。",
         type: "查看型",
         support: "支持",
@@ -421,7 +425,7 @@ export const categories: Category[] = [
       },
       {
         id: "remount",
-        title: "adb remount [-R]",
+        title: "adb remount",
         summary: "将分区重新挂载为可写。",
         type: "写操作",
         support: "受限",
@@ -434,7 +438,7 @@ export const categories: Category[] = [
       },
       {
         id: "push",
-        title: "adb push LOCAL REMOTE",
+        title: "adb push",
         summary: "把本地文件或目录推送到设备。",
         type: "写操作",
         support: "支持",
@@ -464,7 +468,7 @@ export const categories: Category[] = [
       },
       {
         id: "pull",
-        title: "adb pull REMOTE LOCAL",
+        title: "adb pull",
         summary: "从设备拉取文件或目录到本地。",
         type: "查看型",
         support: "支持",
@@ -477,7 +481,7 @@ export const categories: Category[] = [
       },
       {
         id: "install",
-        title: "adb install PACKAGE",
+        title: "adb install",
         summary: "推送单个 APK 并安装到设备。",
         type: "写操作",
         support: "支持",
@@ -497,7 +501,7 @@ export const categories: Category[] = [
       },
       {
         id: "uninstall",
-        title: "adb uninstall [-k] PACKAGE",
+        title: "adb uninstall",
         summary: "卸载指定应用，可选保留数据目录。",
         type: "写操作",
         support: "支持",
@@ -510,7 +514,7 @@ export const categories: Category[] = [
       },
       {
         id: "reboot",
-        title: "adb reboot [mode]",
+        title: "adb reboot",
         summary: "重启设备到系统、bootloader、recovery 或 sideload。",
         type: "写操作",
         support: "支持",
@@ -566,7 +570,7 @@ export const categories: Category[] = [
       },
       {
         id: "connect",
-        title: "adb connect HOST[:PORT]",
+        title: "adb connect",
         summary: "通过 TCP/IP 连接远端设备。",
         type: "写操作",
         support: "支持",
@@ -579,7 +583,7 @@ export const categories: Category[] = [
       },
       {
         id: "disconnect",
-        title: "adb disconnect [HOST[:PORT]]",
+        title: "adb disconnect",
         summary: "断开指定或全部 TCP/IP 设备连接。",
         type: "写操作",
         support: "支持",
@@ -592,7 +596,7 @@ export const categories: Category[] = [
       },
       {
         id: "pair",
-        title: "adb pair HOST[:PORT] [PAIRING CODE]",
+        title: "adb pair",
         summary: "使用配对码与设备建立安全 TCP/IP 配对。",
         type: "写操作",
         support: "支持",
@@ -605,104 +609,56 @@ export const categories: Category[] = [
       },
       {
         id: "forward",
-        title: "adb forward LOCAL REMOTE",
-        summary: "建立主机到设备的端口转发。",
+        title: "adb forward",
+        summary: "管理主机到设备的端口转发。支持 --list / --remove / --remove-all。",
         type: "写操作",
         support: "支持",
         risk: "中",
         raw: "adb forward tcp:8700 jdwp:12345",
         prerequisite: "本地与远端端口语法正确",
         fallback: "adb reverse REMOTE LOCAL",
-        params: [useParam("localSocket", { defaultValue: "tcp:8700" }), useParam("remoteSocket", { defaultValue: "jdwp:12345" })],
-        compose: (v) => `adb forward ${v.localSocket ?? ""} ${v.remoteSocket ?? ""}`.trim()
+        params: [
+          useParam("action", { label: "操作", required: false, defaultValue: "forward", placeholder: "forward / --list / --remove / --remove-all" }),
+          useParam("localSocket", { label: "本地端口", required: false, defaultValue: "tcp:8700" }),
+          useParam("remoteSocket", { label: "远端端口", required: false, defaultValue: "jdwp:12345" }),
+        ],
+        flagMap: { "--list": "action", "--remove": "action", "--remove-all": "action" },
+        toggles: ["--list", "--remove", "--remove-all"],
+        compose: (v) => {
+          const a = v.action || "forward";
+          if (a === "--list") return "adb forward --list";
+          if (a === "--remove-all") return "adb forward --remove-all";
+          if (a === "--remove") return `adb forward --remove ${v.localSocket ?? ""}`.trim();
+          return `adb forward ${v.localSocket ?? ""} ${v.remoteSocket ?? ""}`.trim();
+        }
       },
-      {
-        id: "forward-list",
-        title: "adb forward --list",
-        summary: "列出当前全部 forward 端口转发。",
-        type: "查看型",
-        support: "支持",
-        risk: "低",
-        raw: "adb forward --list",
-        prerequisite: "adb server 已运行",
-        fallback: "adb reverse --list",
-        compose: () => "adb forward --list"
-      },
-      {
-        id: "forward-remove",
-        title: "adb forward --remove LOCAL",
-        summary: "移除指定的 forward 端口转发。",
-        type: "写操作",
-        support: "支持",
-        risk: "中",
-        raw: "adb forward --remove tcp:8700",
-        prerequisite: "目标转发已存在",
-        fallback: "adb forward --remove-all",
-        params: [useParam("localSocket", { defaultValue: "tcp:8700" })],
-        compose: (v) => `adb forward --remove ${v.localSocket ?? ""}`.trim()
-      },
-      {
-        id: "forward-remove-all",
-        title: "adb forward --remove-all",
-        summary: "移除全部 forward 端口转发。",
-        type: "写操作",
-        support: "支持",
-        risk: "中",
-        raw: "adb forward --remove-all",
-        prerequisite: "存在 forward 转发记录",
-        fallback: "adb forward --list",
-        compose: () => "adb forward --remove-all"
-      },
+
       {
         id: "reverse",
-        title: "adb reverse REMOTE LOCAL",
-        summary: "建立设备到主机的反向端口转发。",
+        title: "adb reverse",
+        summary: "管理设备到主机的反向端口转发。支持 --list / --remove / --remove-all。",
         type: "写操作",
         support: "支持",
         risk: "中",
         raw: "adb reverse tcp:8081 tcp:8081",
         prerequisite: "设备支持 reverse",
         fallback: "adb forward LOCAL REMOTE",
-        params: [useParam("remoteSocket", { label: "设备端端口", defaultValue: "tcp:8081" }), useParam("localSocket", { label: "主机端端口", defaultValue: "tcp:8081" })],
-        compose: (v) => `adb reverse ${v.remoteSocket ?? ""} ${v.localSocket ?? ""}`.trim()
+        params: [
+          useParam("action", { label: "操作", required: false, defaultValue: "reverse", placeholder: "reverse / --list / --remove / --remove-all" }),
+          useParam("remoteSocket", { label: "设备端端口", required: false, defaultValue: "tcp:8081" }),
+          useParam("localSocket", { label: "主机端端口", required: false, defaultValue: "tcp:8081" }),
+        ],
+        flagMap: { "--list": "action", "--remove": "action", "--remove-all": "action" },
+        toggles: ["--list", "--remove", "--remove-all"],
+        compose: (v) => {
+          const a = v.action || "reverse";
+          if (a === "--list") return "adb reverse --list";
+          if (a === "--remove-all") return "adb reverse --remove-all";
+          if (a === "--remove") return `adb reverse --remove ${v.remoteSocket ?? ""}`.trim();
+          return `adb reverse ${v.remoteSocket ?? ""} ${v.localSocket ?? ""}`.trim();
+        }
       },
-      {
-        id: "reverse-list",
-        title: "adb reverse --list",
-        summary: "列出当前全部 reverse 端口转发。",
-        type: "查看型",
-        support: "支持",
-        risk: "低",
-        raw: "adb reverse --list",
-        prerequisite: "设备支持 reverse",
-        fallback: "adb forward --list",
-        compose: () => "adb reverse --list"
-      },
-      {
-        id: "reverse-remove",
-        title: "adb reverse --remove REMOTE",
-        summary: "移除指定的 reverse 端口转发。",
-        type: "写操作",
-        support: "支持",
-        risk: "中",
-        raw: "adb reverse --remove tcp:8081",
-        prerequisite: "目标 reverse 已存在",
-        fallback: "adb reverse --remove-all",
-        params: [useParam("remoteSocket", { label: "设备端端口", defaultValue: "tcp:8081" })],
-        compose: (v) => `adb reverse --remove ${v.remoteSocket ?? ""}`.trim()
-      },
-      {
-        id: "reverse-remove-all",
-        title: "adb reverse --remove-all",
-        summary: "移除全部 reverse 端口转发。",
-        type: "写操作",
-        support: "支持",
-        risk: "中",
-        raw: "adb reverse --remove-all",
-        prerequisite: "存在 reverse 转发记录",
-        fallback: "adb reverse --list",
-        compose: () => "adb reverse --remove-all"
-      },
+
       {
         id: "mdns-check",
         title: "adb mdns check",
@@ -729,7 +685,7 @@ export const categories: Category[] = [
       },
       {
         id: "install-multiple",
-        title: "adb install-multiple PACKAGE...",
+        title: "adb install-multiple",
         summary: "安装一个应用的多个 APK 分包。",
         type: "写操作",
         support: "支持",
@@ -742,7 +698,7 @@ export const categories: Category[] = [
       },
       {
         id: "install-multi-package",
-        title: "adb install-multi-package PACKAGE...",
+        title: "adb install-multi-package",
         summary: "原子化安装一个或多个应用包。",
         type: "写操作",
         support: "支持",
@@ -755,7 +711,7 @@ export const categories: Category[] = [
       },
       {
         id: "sideload",
-        title: "adb sideload OTAPACKAGE",
+        title: "adb sideload",
         summary: "在 recovery / sideload 模式下推送完整 OTA 包。",
         type: "写操作",
         support: "受限",
@@ -768,7 +724,7 @@ export const categories: Category[] = [
       },
       {
         id: "sync",
-        title: "adb sync [partition]",
+        title: "adb sync",
         summary: "将本地构建产物同步到设备分区。",
         type: "写操作",
         support: "支持",
@@ -781,7 +737,7 @@ export const categories: Category[] = [
       },
       {
         id: "bugreport",
-        title: "adb bugreport [PATH]",
+        title: "adb bugreport",
         summary: "导出设备 bugreport 到指定路径。",
         type: "查看型",
         support: "支持",
@@ -806,7 +762,7 @@ export const categories: Category[] = [
       },
       {
         id: "logcat",
-        title: "adb logcat [FILTER...]",
+        title: "adb logcat",
         summary: "查看设备日志输出，可指定过滤表达式。",
         type: "查看型",
         support: "支持",
@@ -857,7 +813,7 @@ export const categories: Category[] = [
       },
       {
         id: "keygen",
-        title: "adb keygen FILE",
+        title: "adb keygen",
         summary: "生成 adb 公私钥对到指定文件。",
         type: "写操作",
         support: "支持",
@@ -919,7 +875,7 @@ export const categories: Category[] = [
       },
       {
         id: "tcpip",
-        title: "adb tcpip PORT",
+        title: "adb tcpip",
         summary: "重启 adbd 并监听指定 TCP 端口。",
         type: "写操作",
         support: "支持",
@@ -968,7 +924,7 @@ export const categories: Category[] = [
       },
       {
         id: "reconnect",
-        title: "adb reconnect [device|offline]",
+        title: "adb reconnect",
         summary: "重置主机侧或设备侧连接，强制重新连接。",
         type: "写操作",
         support: "支持",
@@ -1136,7 +1092,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-force-stop",
-        title: "adb shell am force-stop PACKAGE",
+        title: "adb shell am force-stop",
         summary: "彻底停止指定应用包。",
         type: "写操作",
         support: "支持",
@@ -1149,7 +1105,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-kill",
-        title: "adb shell am kill PACKAGE",
+        title: "adb shell am kill",
         summary: "杀掉指定应用关联的后台进程。",
         type: "写操作",
         support: "支持",
@@ -1174,7 +1130,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-instrument",
-        title: "adb shell am instrument -w COMPONENT",
+        title: "adb shell am instrument",
         summary: "启动 instrumentation 测试并等待完成。",
         type: "写操作",
         support: "支持",
@@ -1306,7 +1262,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-crash",
-        title: "adb shell am crash PACKAGE",
+        title: "adb shell am crash",
         summary: "主动触发指定应用或进程崩溃，便于异常链路验证。",
         type: "写操作",
         support: "支持",
@@ -1331,7 +1287,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-package-importance",
-        title: "adb shell am package-importance PACKAGE",
+        title: "adb shell am package-importance",
         summary: "查看指定应用当前的进程重要性等级。",
         type: "查看型",
         support: "支持",
@@ -1370,7 +1326,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-switch-user",
-        title: "adb shell am switch-user USER_ID",
+        title: "adb shell am switch-user",
         summary: "切换到指定 Android 用户。",
         type: "写操作",
         support: "支持",
@@ -1395,7 +1351,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-start-user",
-        title: "adb shell am start-user -w USER_ID",
+        title: "adb shell am start-user",
         summary: "启动指定用户并等待完成。",
         type: "写操作",
         support: "支持",
@@ -1408,7 +1364,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-stop-user",
-        title: "adb shell am stop-user -w USER_ID",
+        title: "adb shell am stop-user",
         summary: "停止指定用户会话。",
         type: "写操作",
         support: "支持",
@@ -1457,7 +1413,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-display-command",
-        title: "adb shell am display [COMMAND]",
+        title: "adb shell am display",
         summary: "进入 am display 子命令族，处理 display 相关操作。",
         type: "查看型",
         support: "受限",
@@ -1470,7 +1426,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-stack-command",
-        title: "adb shell am stack [COMMAND]",
+        title: "adb shell am stack",
         summary: "进入 am stack 子命令族，处理任务栈相关操作。",
         type: "查看型",
         support: "受限",
@@ -1483,7 +1439,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-task-command",
-        title: "adb shell am task [COMMAND]",
+        title: "adb shell am task",
         summary: "进入 am task 子命令族，处理任务相关操作。",
         type: "查看型",
         support: "受限",
@@ -1496,7 +1452,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-compat-command",
-        title: "adb shell am compat [COMMAND]",
+        title: "adb shell am compat",
         summary: "进入 am compat 子命令族，处理 app compat 开关。",
         type: "写操作",
         support: "受限",
@@ -1509,7 +1465,7 @@ export const categories: Category[] = [
       },
       {
         id: "am-memory-factor",
-        title: "adb shell am memory-factor [COMMAND]",
+        title: "adb shell am memory-factor",
         summary: "进入 memory-factor 子命令族，处理内存压力因子覆盖。",
         type: "写操作",
         support: "受限",
@@ -1529,7 +1485,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "pm-clear",
-        title: "pm clear 包名",
+        title: "adb shell pm clear",
         summary: "清除应用数据，执行前需要二次确认并展示影响范围。",
         type: "写操作",
         support: "支持",
@@ -1542,7 +1498,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-list-permissions",
-        title: "adb shell pm list permissions -g -d",
+        title: "adb shell pm list permissions",
         summary: "查看权限组与危险权限，用于兼容性或权限排查。",
         type: "查看型",
         support: "支持",
@@ -1554,7 +1510,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-path",
-        title: "adb shell pm path PACKAGE",
+        title: "adb shell pm path",
         summary: "查看应用 APK 在设备中的安装路径。",
         type: "查看型",
         support: "支持",
@@ -1567,7 +1523,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-dump",
-        title: "adb shell pm dump PACKAGE",
+        title: "adb shell pm dump",
         summary: "查看包管理器记录的应用安装与权限状态。",
         type: "查看型",
         support: "支持",
@@ -1686,7 +1642,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-has-feature",
-        title: "adb shell pm has-feature FEATURE_NAME",
+        title: "adb shell pm has-feature",
         summary: "检查系统是否声明支持某个 feature。",
         type: "查看型",
         support: "支持",
@@ -1735,7 +1691,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-enable",
-        title: "adb shell pm enable PACKAGE_OR_COMPONENT",
+        title: "adb shell pm enable",
         summary: "启用指定包或组件。",
         type: "写操作",
         support: "支持",
@@ -1748,7 +1704,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-disable",
-        title: "adb shell pm disable PACKAGE_OR_COMPONENT",
+        title: "adb shell pm disable",
         summary: "禁用指定包或组件。",
         type: "写操作",
         support: "支持",
@@ -1761,7 +1717,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-hide",
-        title: "adb shell pm hide PACKAGE",
+        title: "adb shell pm hide",
         summary: "隐藏指定应用。",
         type: "写操作",
         support: "支持",
@@ -1774,7 +1730,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-unhide",
-        title: "adb shell pm unhide PACKAGE",
+        title: "adb shell pm unhide",
         summary: "取消隐藏指定应用。",
         type: "写操作",
         support: "支持",
@@ -1787,7 +1743,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-grant",
-        title: "adb shell pm grant PACKAGE PERMISSION",
+        title: "adb shell pm grant",
         summary: "为应用授予运行时权限。",
         type: "写操作",
         support: "支持",
@@ -1800,7 +1756,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-revoke",
-        title: "adb shell pm revoke PACKAGE PERMISSION",
+        title: "adb shell pm revoke",
         summary: "撤销应用的运行时权限。",
         type: "写操作",
         support: "支持",
@@ -1837,7 +1793,7 @@ export const categories: Category[] = [
       },
       {
         id: "pm-compile",
-        title: "adb shell pm compile PACKAGE",
+        title: "adb shell pm compile",
         summary: "触发指定应用的 dex 编译。",
         type: "写操作",
         support: "支持",
@@ -1857,7 +1813,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "ime-list",
-        title: "adb shell ime list [-a] [-s]",
+        title: "adb shell ime list",
         summary: "列出输入法；可切换为全部或单行摘要模式。",
         type: "查看型",
         support: "支持",
@@ -1870,7 +1826,7 @@ export const categories: Category[] = [
       },
       {
         id: "ime-enable",
-        title: "adb shell ime enable [--user USER_ID] ID",
+        title: "adb shell ime enable",
         summary: "启用指定输入法 ID。",
         type: "写操作",
         support: "支持",
@@ -1883,7 +1839,7 @@ export const categories: Category[] = [
       },
       {
         id: "ime-disable",
-        title: "adb shell ime disable [--user USER_ID] ID",
+        title: "adb shell ime disable",
         summary: "禁用指定输入法 ID。",
         type: "写操作",
         support: "支持",
@@ -1896,7 +1852,7 @@ export const categories: Category[] = [
       },
       {
         id: "ime-set",
-        title: "adb shell ime set [--user USER_ID] ID",
+        title: "adb shell ime set",
         summary: "将当前输入法切换为指定 ID。",
         type: "写操作",
         support: "支持",
@@ -1909,7 +1865,7 @@ export const categories: Category[] = [
       },
       {
         id: "ime-reset",
-        title: "adb shell ime reset [--user USER_ID]",
+        title: "adb shell ime reset",
         summary: "把当前用户的输入法配置重置为默认值。",
         type: "写操作",
         support: "支持",
@@ -1928,7 +1884,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "content-query",
-        title: "adb shell content query --uri URI",
+        title: "adb shell content query",
         summary: "查询 content provider 数据，常用于 settings 或 media 验证。",
         type: "查看型",
         support: "支持",
@@ -1952,7 +1908,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-insert",
-        title: "adb shell content insert --uri URI --bind ...",
+        title: "adb shell content insert",
         summary: "向 content provider 插入一条记录。",
         type: "写操作",
         support: "支持",
@@ -1968,7 +1924,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-update",
-        title: "adb shell content update --uri URI",
+        title: "adb shell content update",
         summary: "更新 content provider 中的现有记录。",
         type: "写操作",
         support: "支持",
@@ -1989,7 +1945,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-delete",
-        title: "adb shell content delete --uri URI",
+        title: "adb shell content delete",
         summary: "删除 content provider 中的记录。",
         type: "写操作",
         support: "支持",
@@ -2009,7 +1965,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-call",
-        title: "adb shell content call --uri URI --method METHOD",
+        title: "adb shell content call",
         summary: "调用 provider 自定义方法。",
         type: "写操作",
         support: "受限",
@@ -2030,7 +1986,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-read",
-        title: "adb shell content read --uri URI",
+        title: "adb shell content read",
         summary: "读取二进制或缓存型内容并输出到标准输出。",
         type: "查看型",
         support: "支持",
@@ -2043,7 +1999,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-write",
-        title: "adb shell content write --uri URI",
+        title: "adb shell content write",
         summary: "将标准输入写入指定 provider 目标。",
         type: "写操作",
         support: "支持",
@@ -2056,7 +2012,7 @@ export const categories: Category[] = [
       },
       {
         id: "content-gettype",
-        title: "adb shell content gettype --uri URI",
+        title: "adb shell content gettype",
         summary: "读取 provider 返回的 MIME 类型。",
         type: "查看型",
         support: "支持",
@@ -2076,7 +2032,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "wm-size",
-        title: "wm size",
+        title: "adb shell wm size",
         summary: "读取当前物理/逻辑分辨率，或设置覆盖值。",
         type: "查看型",
         support: "支持",
@@ -2089,7 +2045,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-density",
-        title: "wm density",
+        title: "adb shell wm density",
         summary: "修改密度用于 UI 兼容性验证。",
         type: "写操作",
         support: "支持",
@@ -2102,7 +2058,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-folded-area",
-        title: "wm folded-area",
+        title: "adb shell wm folded-area",
         summary: "查看或覆盖折叠区域。",
         type: "查看型",
         support: "支持",
@@ -2115,7 +2071,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-scaling",
-        title: "wm scaling",
+        title: "adb shell wm scaling",
         summary: "查看或设置显示缩放模式。",
         type: "写操作",
         support: "支持",
@@ -2128,7 +2084,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-dismiss-keyguard",
-        title: "wm dismiss-keyguard",
+        title: "adb shell wm dismiss-keyguard",
         summary: "尝试解锁或唤起 keyguard 验证。",
         type: "写操作",
         support: "支持",
@@ -2140,7 +2096,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-disable-blur",
-        title: "wm disable-blur",
+        title: "adb shell wm disable-blur",
         summary: "开启或关闭窗口模糊效果。",
         type: "写操作",
         support: "支持",
@@ -2153,7 +2109,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-user-rotation",
-        title: "wm user-rotation",
+        title: "adb shell wm user-rotation",
         summary: "查看或设置用户旋转模式。",
         type: "写操作",
         support: "支持",
@@ -2166,7 +2122,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-dump-visible-window-views",
-        title: "wm dump-visible-window-views",
+        title: "adb shell wm dump-visible-window-views",
         summary: "导出当前可见窗口的编码视图层级。",
         type: "查看型",
         support: "支持",
@@ -2178,7 +2134,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-fixed-to-user-rotation",
-        title: "wm fixed-to-user-rotation",
+        title: "adb shell wm fixed-to-user-rotation",
         summary: "查看或设置 app 请求方向是否固定跟随用户旋转。",
         type: "写操作",
         support: "支持",
@@ -2191,7 +2147,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-set-ignore-orientation-request",
-        title: "wm set-ignore-orientation-request",
+        title: "adb shell wm set-ignore-orientation-request",
         summary: "设置是否忽略应用的方向请求。",
         type: "写操作",
         support: "支持",
@@ -2204,7 +2160,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-get-ignore-orientation-request",
-        title: "wm get-ignore-orientation-request",
+        title: "adb shell wm get-ignore-orientation-request",
         summary: "查看当前是否忽略应用方向请求。",
         type: "查看型",
         support: "支持",
@@ -2216,7 +2172,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-set-multi-window-config",
-        title: "wm set-multi-window-config",
+        title: "adb shell wm set-multi-window-config",
         summary: "覆盖多窗口相关配置选项。",
         type: "写操作",
         support: "受限",
@@ -2229,7 +2185,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-get-multi-window-config",
-        title: "wm get-multi-window-config",
+        title: "adb shell wm get-multi-window-config",
         summary: "查看当前多窗口配置值。",
         type: "查看型",
         support: "支持",
@@ -2241,7 +2197,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-reset-multi-window-config",
-        title: "wm reset-multi-window-config",
+        title: "adb shell wm reset-multi-window-config",
         summary: "重置多窗口配置覆盖项。",
         type: "写操作",
         support: "支持",
@@ -2253,7 +2209,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-reset",
-        title: "wm reset",
+        title: "adb shell wm reset",
         summary: "重置全部窗口管理覆盖设置。",
         type: "写操作",
         support: "支持",
@@ -2265,7 +2221,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-tracing-start",
-        title: "wm tracing start",
+        title: "adb shell wm tracing start",
         summary: "启动 window tracing。",
         type: "写操作",
         support: "支持",
@@ -2277,7 +2233,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-tracing-stop",
-        title: "wm tracing stop",
+        title: "adb shell wm tracing stop",
         summary: "停止 window tracing。",
         type: "写操作",
         support: "支持",
@@ -2289,7 +2245,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-logging-start",
-        title: "wm logging start",
+        title: "adb shell wm logging start",
         summary: "启动 window manager logging。",
         type: "写操作",
         support: "支持",
@@ -2301,7 +2257,7 @@ export const categories: Category[] = [
       },
       {
         id: "wm-logging-stop",
-        title: "wm logging stop",
+        title: "adb shell wm logging stop",
         summary: "停止 window manager logging。",
         type: "写操作",
         support: "支持",
@@ -2320,7 +2276,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "dumpsys-list",
-        title: "adb shell dumpsys -l",
+        title: "adb shell dumpsys",
         summary: "列出当前设备上全部可用的 dumpsys 服务名。",
         type: "查看型",
         support: "支持",
@@ -2332,7 +2288,7 @@ export const categories: Category[] = [
       },
       {
         id: "dumpsys-service",
-        title: "adb shell dumpsys SERVICE",
+        title: "adb shell dumpsys",
         summary: "按服务名查看任意 dumpsys 服务输出，用于补足未单独建卡的服务。",
         type: "查看型",
         support: "支持",
@@ -2369,7 +2325,7 @@ export const categories: Category[] = [
       },
       {
         id: "dumpsys-package",
-        title: "adb shell dumpsys package PACKAGE",
+        title: "adb shell dumpsys package",
         summary: "查看指定应用的包状态、权限和安装记录。",
         type: "查看型",
         support: "支持",
@@ -2394,7 +2350,7 @@ export const categories: Category[] = [
       },
       {
         id: "dumpsys-meminfo",
-        title: "adb shell dumpsys meminfo PROCESS",
+        title: "adb shell dumpsys meminfo",
         summary: "查看目标进程或包的内存占用详情。",
         type: "查看型",
         support: "支持",
@@ -2716,7 +2672,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "shell",
-        title: "adb shell [COMMAND...]",
+        title: "adb shell",
         summary: "执行远端 shell 命令；无参数时进入交互 shell。",
         type: "写操作",
         support: "支持",
@@ -2729,7 +2685,7 @@ export const categories: Category[] = [
       },
       {
         id: "emu",
-        title: "adb emu COMMAND",
+        title: "adb emu",
         summary: "向模拟器控制台发送命令。",
         type: "写操作",
         support: "受限",
@@ -2742,7 +2698,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-getprop",
-        title: "adb shell getprop PROPERTY",
+        title: "adb shell getprop",
         summary: "读取系统属性。",
         type: "查看型",
         support: "支持",
@@ -2755,7 +2711,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-setprop",
-        title: "adb shell setprop PROPERTY VALUE",
+        title: "adb shell setprop",
         summary: "写入系统属性。",
         type: "写操作",
         support: "受限",
@@ -2768,7 +2724,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-settings-get",
-        title: "adb shell settings get NAMESPACE KEY",
+        title: "adb shell settings get",
         summary: "读取 settings provider 中的配置值。",
         type: "查看型",
         support: "支持",
@@ -2781,7 +2737,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-settings-put",
-        title: "adb shell settings put NAMESPACE KEY VALUE",
+        title: "adb shell settings put",
         summary: "写入 settings provider 配置值。",
         type: "写操作",
         support: "支持",
@@ -2794,7 +2750,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-settings-list",
-        title: "adb shell settings list NAMESPACE",
+        title: "adb shell settings list",
         summary: "列出指定 settings 命名空间下的全部键值。",
         type: "查看型",
         support: "支持",
@@ -2807,7 +2763,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-settings-delete",
-        title: "adb shell settings delete NAMESPACE KEY",
+        title: "adb shell settings delete",
         summary: "删除指定 settings 项。",
         type: "写操作",
         support: "支持",
@@ -2820,7 +2776,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-cmd-package",
-        title: "adb shell cmd package COMMAND",
+        title: "adb shell cmd package",
         summary: "进入 cmd package 子命令族。",
         type: "写操作",
         support: "支持",
@@ -2833,7 +2789,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-cmd-activity",
-        title: "adb shell cmd activity COMMAND",
+        title: "adb shell cmd activity",
         summary: "进入 cmd activity 子命令族。",
         type: "写操作",
         support: "支持",
@@ -2846,7 +2802,7 @@ export const categories: Category[] = [
       },
       {
         id: "shell-cmd-window",
-        title: "adb shell cmd window COMMAND",
+        title: "adb shell cmd window",
         summary: "进入 cmd window 子命令族。",
         type: "写操作",
         support: "支持",
@@ -2866,7 +2822,7 @@ export const categories: Category[] = [
     commands: [
       {
         id: "input-text",
-        title: "input text",
+        title: "adb shell input text",
         summary: "向焦点输入框输入文本，可与自动化步骤联动。",
         type: "写操作",
         support: "支持",
@@ -2879,7 +2835,7 @@ export const categories: Category[] = [
       },
       {
         id: "input-tap",
-        title: "input tap",
+        title: "adb shell input tap",
         summary: "按屏幕坐标点击，适合简单自动化与调试。",
         type: "写操作",
         support: "支持",
@@ -2892,7 +2848,7 @@ export const categories: Category[] = [
       },
       {
         id: "input-keyevent",
-        title: "input keyevent",
+        title: "adb shell input keyevent",
         summary: "发送按键事件。",
         type: "写操作",
         support: "支持",
@@ -2905,7 +2861,7 @@ export const categories: Category[] = [
       },
       {
         id: "input-swipe",
-        title: "input swipe",
+        title: "adb shell input swipe",
         summary: "按起止坐标执行滑动手势。",
         type: "写操作",
         support: "支持",
@@ -2924,7 +2880,7 @@ export const categories: Category[] = [
       },
       {
         id: "input-press",
-        title: "input press",
+        title: "adb shell input press",
         summary: "发送触控板按压事件。",
         type: "写操作",
         support: "受限",
@@ -2936,7 +2892,7 @@ export const categories: Category[] = [
       },
       {
         id: "input-roll",
-        title: "input roll",
+        title: "adb shell input roll",
         summary: "发送轨迹球滚动事件。",
         type: "写操作",
         support: "受限",
@@ -2968,7 +2924,7 @@ export const categories: Category[] = [
       },
       {
         id: "svc-power-stayon",
-        title: "adb shell svc power stayon [true|false|usb|ac|wireless]",
+        title: "adb shell svc power stayon",
         summary: "控制插电时保持唤醒的策略。",
         type: "写操作",
         support: "支持",
@@ -2981,7 +2937,7 @@ export const categories: Category[] = [
       },
       {
         id: "svc-power-reboot",
-        title: "adb shell svc power reboot [reason]",
+        title: "adb shell svc power reboot",
         summary: "通过 power manager 触发运行时重启。",
         type: "写操作",
         support: "支持",
@@ -3006,7 +2962,7 @@ export const categories: Category[] = [
       },
       {
         id: "svc-power-forcesuspend",
-        title: "adb shell svc power forcesuspend [t]",
+        title: "adb shell svc power forcesuspend",
         summary: "忽略 wakelock 强制进入 suspend，属于危险操作。",
         type: "写操作",
         support: "受限",
@@ -3019,7 +2975,7 @@ export const categories: Category[] = [
       },
       {
         id: "svc-usb-set-functions",
-        title: "adb shell svc usb setFunctions [function]",
+        title: "adb shell svc usb setFunctions",
         summary: "设置当前 USB 功能，例如 mtp / ptp / rndis。",
         type: "写操作",
         support: "支持",
@@ -3032,7 +2988,7 @@ export const categories: Category[] = [
       },
       {
         id: "svc-usb-set-screen-unlocked-functions",
-        title: "adb shell svc usb setScreenUnlockedFunctions [function]",
+        title: "adb shell svc usb setScreenUnlockedFunctions",
         summary: "设置解锁后自动切换的 USB 功能。",
         type: "写操作",
         support: "支持",
@@ -3176,4 +3132,262 @@ export function getParamInlineText(param: CommandParam): string {
     return description ? `${token} ${param.label}（${description}）` : `${token} ${param.label}`;
   }
   return param.placeholder || param.label;
+}
+
+// ── Expand abbreviated flag to full form for smart match ──
+
+const flagAliasMap: Record<string, string> = {
+  "-u": "--user",
+  "-p": "--pkg",
+  "-c": "--component",
+};
+
+export function expandFlag(token: string): string {
+  return flagAliasMap[token] || token;
+}
+
+// ── Helpers for command title prefix matching ──
+
+/** Extract the fixed command prefix from a title with variable/placeholder tokens.
+ *  Example: "adb shell getprop PROPERTY" → "adb shell getprop"
+ *           "adb install PACKAGE" → "adb install"
+ *           "adb shell am start" → "adb shell am start" (no placeholder)
+ */
+export function getCommandPrefix(title: string): string | null {
+  const parts = title.split(" ");
+  if (parts.length <= 1) return null;
+  let lastIndex = parts.length - 1;
+  while (lastIndex > 0) {
+    const word = parts[lastIndex];
+    const isPlaceholder =
+      /^\[.*\]$/.test(word) ||
+      word.startsWith("[") ||
+      word.endsWith("]") ||
+      /^[A-Z][A-Z0-9_:|.\-]+$/.test(word) ||
+      word.startsWith("-");
+    if (!isPlaceholder) break;
+    lastIndex--;
+  }
+  return lastIndex < parts.length - 1 ? parts.slice(0, lastIndex + 1).join(" ") : null;
+}
+
+// ── Flag → param key mapping (built by analyzing compose function body) ──
+
+export function buildFlagToParamMap(command: CommandMeta): {
+  map: Map<string, string>;
+  toggles: Set<string>;
+  positional: string[];
+} {
+  const result = {
+    map: new Map<string, string>(),
+    toggles: new Set<string>(),
+    positional: [] as string[],
+  };
+  // Prefer static definition (works in both dev and production)
+  if (command.flagMap) {
+    for (const [flag, paramKey] of Object.entries(command.flagMap)) {
+      result.map.set(flag, paramKey as string);
+    }
+    if (command.toggles) {
+      for (const flag of command.toggles) {
+        result.toggles.add(flag);
+      }
+    }
+    return result;
+  }
+  // Fallback: parse compose function (handles Terser-mangled param names like `n`)
+  if (!command.compose) return result;
+  const fnStr = command.compose.toString();
+
+  // Track all params that have a flag (value or toggle) to distinguish from positional
+  const flaggedParams = new Set<string>();
+
+  // Match: push(`--flag ${anything.paramKey}`) — value flags, any param name
+  const flagRegex = /\`(--?[\w-]+)\s*\$\{\w+\.(\w+)\}`/g;
+  let m: RegExpExecArray | null;
+  while ((m = flagRegex.exec(fnStr)) !== null) {
+    result.map.set(m[1], m[2]);
+    flaggedParams.add(m[2]);
+  }
+  // Match: anything.paramKey&&anything.push("-T") — toggle-only flags
+  const toggleRegex = /\w+\.(\w+)\s*&&\s*\w+\.push\("(--?[\w-]+)"\)/g;
+  while ((m = toggleRegex.exec(fnStr)) !== null) {
+    result.map.set(m[2], m[1]);
+    flaggedParams.add(m[1]);
+    result.toggles.add(m[2]);
+  }
+
+  // Detect positional params: ${anything.paramKey} in template literals WITHOUT a preceding flag
+  // Handles defaults like ${values.property??""}
+  const positionalRegex = /\$\{\w+\.(\w+)([^}]*)\}/g;
+  while ((m = positionalRegex.exec(fnStr)) !== null) {
+    const before = fnStr.substring(Math.max(0, m.index - 15), m.index);
+    const hasFlag = /\`(--?[\w-]+)\s*$/.test(before);
+    if (!hasFlag && !flaggedParams.has(m[1])) {
+      result.positional.push(m[1]);
+    }
+  }
+
+  return result;
+}
+
+// ── Search catalog for commands matching a keyword ──
+
+export function searchCommands(
+  categories: { id: string; commands: CommandMeta[] }[],
+  query: string,
+  maxResults = 20
+): { command: CommandMeta; categoryId: string }[] {
+  if (!query.trim()) return [];
+  const lower = query.toLowerCase().trim();
+  const results: { command: CommandMeta; categoryId: string }[] = [];
+
+  for (const cat of categories) {
+    for (const cmd of cat.commands) {
+      // Use prefix matching: strip trailing placeholder words from title
+      const cmdPrefix = getCommandPrefix(cmd.title);
+      const matchTitle = cmdPrefix || cmd.title;
+
+      if (
+        lower.startsWith(matchTitle.toLowerCase()) ||
+        cmd.id === lower.replace(/[^a-z0-9-]/g, "") ||
+        cmd.title.toLowerCase().includes(lower) ||
+        cmd.summary.toLowerCase().includes(lower) ||
+        cmd.raw?.toLowerCase().includes(lower)
+      ) {
+        results.push({ command: cmd, categoryId: cat.id });
+        if (results.length >= maxResults) return results;
+      }
+    }
+  }
+  return results;
+}
+
+// ── Parse a raw command string to match a catalog entry and extract params ──
+
+interface ParseCandidate {
+  command: CommandMeta;
+  categoryId: string;
+  params: Record<string, string>;
+  consumed: number; // number of tokens consumed by flagged/positional params
+  prefixLen: number; // length of matching title prefix (longer = more specific)
+}
+
+export function parseRawToCommand(
+  categories: { id: string; commands: CommandMeta[] }[],
+  input: string
+): { command: CommandMeta; categoryId: string; params: Record<string, string> } | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Helper: try to parse input against a single command, returning null if no match
+  function tryParse(cmd: CommandMeta, catId: string): ParseCandidate | null {
+    const cmdPrefix = getCommandPrefix(cmd.title);
+    const titlePrefix = (cmdPrefix || cmd.title) + " ";
+    if (!trimmed.startsWith(titlePrefix) && trimmed !== cmd.title) return null;
+    const prefixLen = titlePrefix.length;
+
+    if (trimmed === cmd.title) {
+      return { command: cmd, categoryId: catId, params: createDefaultParamValues(cmd), consumed: 0, prefixLen };
+    }
+
+    const extra = trimmed.slice(prefixLen).trim();
+    const { map: flagMap, toggles, positional } = buildFlagToParamMap(cmd);
+    const params = createDefaultParamValues(cmd);
+
+    // Track which params were explicitly set (not just defaults)
+    const setParams = new Set<string>();
+
+    // Parse extra args: split tokens preserving quoted values
+    const tokens: string[] = [];
+    for (const token of extra.match(/(?:'[^']*'|"[^"]*"|\S)+/g) ?? []) {
+      tokens.push(token.replace(/^['"]|['"]$/g, ""));
+    }
+
+    const unknownTokens: string[] = [];
+
+    let i = 0;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const expandedToken = expandFlag(token);
+      let flagKey = flagMap.get(token);
+      if (flagKey === undefined) flagKey = flagMap.get(expandedToken);
+      if (flagKey !== undefined) {
+        i++;
+        if (toggles.has(token)) {
+          params[flagKey] = token;
+          setParams.add(flagKey);
+        } else if (i < tokens.length && !flagMap.has(tokens[i])) {
+          params[flagKey] = tokens[i];
+          setParams.add(flagKey);
+          i++;
+        } else {
+          params[flagKey] = token;
+          setParams.add(flagKey);
+        }
+      } else {
+        unknownTokens.push(token);
+        i++;
+      }
+    }
+
+    // Collect param keys targeted by flagMap entries (exclude from positional)
+    const flagTargetParams = new Set(Object.values(cmd.flagMap ?? {}));
+    // Build positional slot list: unfilled non-toggle params, excluding those targeted by flagMap
+    const fullPositional = (cmd.params ?? []).map(p => p.key).filter(k =>
+      !setParams.has(k) &&
+      !toggles.has(k) &&
+      !toggles.has(`--${k}`) &&
+      !flagTargetParams.has(k)
+    );
+
+    // Assign remaining unknown tokens to positional slots, then fallback to intentExtras
+    let pi = 0;
+    let consumed = setParams.size;
+    for (let ui = 0; ui < unknownTokens.length; ui++) {
+      // Find next unfilled positional param
+      while (pi < fullPositional.length && setParams.has(fullPositional[pi])) {
+        pi++;
+      }
+      if (pi < fullPositional.length) {
+        params[fullPositional[pi]] = unknownTokens[ui];
+        setParams.add(fullPositional[pi]);
+        consumed++;
+        pi++;
+      } else {
+        // No more positional slots — fall back to intentExtras if available
+        if (cmd.params?.some(p => p.key === "intentExtras")) {
+          const remaining = unknownTokens.slice(ui).join(" ");
+          params.intentExtras = (params.intentExtras || "") + (params.intentExtras ? " " : "") + remaining;
+          consumed += unknownTokens.slice(ui).length;
+        }
+        break;
+      }
+    }
+
+    return { command: cmd, categoryId: catId, params, consumed, prefixLen };
+  }
+
+  // Collect all candidates and pick the best one
+  let best: ParseCandidate | null = null;
+
+  for (const cat of categories) {
+    for (const cmd of cat.commands) {
+      const candidate = tryParse(cmd, cat.id);
+      if (!candidate) continue;
+
+      if (!best) {
+        best = candidate;
+      } else {
+        // Score: more consumed tokens > longer prefix > appears earlier
+        if (candidate.consumed > best.consumed) {
+          best = candidate;
+        } else if (candidate.consumed === best.consumed && candidate.prefixLen > best.prefixLen) {
+          best = candidate;
+        }
+      }
+    }
+  }
+
+  return best ? { command: best.command, categoryId: best.categoryId, params: best.params } : null;
 }

@@ -84,6 +84,10 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
         start: (payload) => ipcRenderer.invoke("recording.start", payload),
         stop: (payload) => ipcRenderer.invoke("recording.stop", payload)
     },
+    debug: {
+        log: (payload) => ipcRenderer.invoke("debug.log", payload),
+        openDevTools: () => ipcRenderer.invoke("debug.openDevTools")
+    },
     crash: {
         list: (payload) => ipcRenderer.invoke("crash.list", payload),
         read: (payload) => ipcRenderer.invoke("crash.read", payload),

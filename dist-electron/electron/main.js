@@ -242,6 +242,7 @@ function registerIpcHandlers() {
         if (payload.source) {
             args.push("--source", payload.source);
         }
+        console.error("[DEBUG command.run]", JSON.stringify({ rawCommand: payload.rawCommand, commandTitle: payload.commandTitle, commandId: payload.commandId }));
         return invokeBackend(args);
     });
     ipcMain.handle("history.list", async (_event, payload) => {
@@ -777,370 +778,229 @@ function registerIpcHandlers() {
         }
     });
     /**
-     * Input event recording via adb shell getevent -lt
-     * Captures touch/key events and parses them into KeySimMacroStep[]
+     * Input event recording via logcat SystemGestureDispatcher:W
+     * Captures touch events (tap/swipe/long_press) from framework MotionEvent log
      */
-    // ── Recording state (shared by getevent and dumpsys modes) ──
-    let activeInputRecording = null;
-    let inputRecordingBuffer = [];
-    let inputRecordingStartTime = 0;
-    let currentRecordingMode = "getevent";
-    const INPUT_RECORDING_TIMEOUT_MS = 120_000; // max 2 minutes
-    const INPUT_RECORDING_MAX_LINES = 100_000;
-    // ── Dumpsys polling state ──
-    let dumpsysPollTimer = null;
-    let dumpsysSeenEvents;
-    let dumpsysRawEvents;
-    let dumpsysDeviceIdRunning = "";
-    // Regex to parse dumpsys RecentQueue lines
-    const DUMPSYS_MOTION_RE = /MotionEvent\(deviceId=-?\d+,\s*eventTime=(\d+)[^)]*?action=(DOWN|UP|MOVE)[^)]*?,\s*pointers=\[0:\s*\(([\d.]+),\s*([\d.]+)\)/;
-    const DUMPSYS_KEY_RE = /KeyEvent\(deviceId=-?\d+,\s*eventTime=(\d+)[^)]*?action=(DOWN|UP)[^)]*?keyCode=(\d+)/;
-    function parseDumpsysRecentQueueLine(line, seedOnly = false) {
-        const mMotion = line.match(DUMPSYS_MOTION_RE);
-        if (mMotion) {
-            const eventTime = parseInt(mMotion[1], 10);
-            const action = mMotion[2];
-            const x = Math.round(parseFloat(mMotion[3]));
-            const y = Math.round(parseFloat(mMotion[4]));
-            const key = `M:${mMotion[1]}:${action}`;
-            if (dumpsysSeenEvents.has(key))
-                return;
-            dumpsysSeenEvents.add(key);
-            if (!seedOnly) {
-                dumpsysRawEvents.push({ time: eventTime, type: "touch", action, x, y, keyCode: -1 });
-            }
-            return;
-        }
-        const mKey = line.match(DUMPSYS_KEY_RE);
-        if (mKey) {
-            const eventTime = parseInt(mKey[1], 10);
-            const action = mKey[2];
-            const keyCode = parseInt(mKey[3], 10);
-            const key = `K:${mKey[1]}:${action}:${keyCode}`;
-            if (dumpsysSeenEvents.has(key))
-                return;
-            dumpsysSeenEvents.add(key);
-            if (!seedOnly) {
-                dumpsysRawEvents.push({ time: eventTime, type: "key", action, x: -1, y: -1, keyCode });
-            }
-        }
+    // ── Logcat recording state ──
+    let logcatProcess = null;
+    let logcatRawEvents = [];
+    let logcatLineBuffer = "";
+    let recordingStartTimeMs = 0;
+    const RECORDING_MAX_EVENTS = 50_000;
+    const RECORDING_TIMEOUT_MS = 120_000;
+    // Parse logcat HH:MM:SS.mmm to ms-since-midnight
+    function parseLogcatTimestamp(line) {
+        const m = line.match(/\d{2}-\d{2} (\d{2}):(\d{2}):(\d{2})\.(\d+)/);
+        if (!m)
+            return Date.now();
+        const h = parseInt(m[1], 10);
+        const min = parseInt(m[2], 10);
+        const s = parseInt(m[3], 10);
+        const ms = parseInt(m[4].padEnd(3, "0").slice(0, 3), 10);
+        return h * 3_600_000 + min * 60_000 + s * 1_000 + ms;
     }
-    // Map Android keyCode to KEYCODE_ name
-    function androidKeyCodeToName(code) {
-        const map = {
-            1: "MENU", 2: "SOFT_RIGHT", 3: "HOME", 4: "BACK", 5: "CALL", 6: "ENDCALL",
-            7: "0", 8: "1", 9: "2", 10: "3", 11: "4", 12: "5", 13: "6", 14: "7", 15: "8", 16: "9",
-            17: "STAR", 18: "POUND", 19: "DPAD_UP", 20: "DPAD_DOWN", 21: "DPAD_LEFT", 22: "DPAD_RIGHT",
-            23: "DPAD_CENTER", 24: "VOLUME_UP", 25: "VOLUME_DOWN", 26: "POWER",
-            51: "CLEAR", 66: "ENTER", 67: "DEL", 82: "MENU", 84: "SEARCH",
-            85: "MEDIA_PLAY_PAUSE", 86: "MEDIA_STOP", 87: "MEDIA_NEXT", 88: "MEDIA_PREVIOUS",
-            91: "MEDIA_REWIND", 92: "MEDIA_FAST_FORWARD", 93: "MEDIA_PLAY",
-            111: "ESCAPE", 112: "FORWARD_DEL", 113: "CTRL_LEFT", 114: "CTRL_RIGHT",
-            115: "CAPS_LOCK", 116: "SCROLL_LOCK", 140: "FUNCTION", 141: "SYSRQ",
-            143: "BREAK", 158: "MOVE_HOME", 159: "MOVE_END", 160: "INSERT",
-            176: "NUMPAD_ENTER", 207: "HEADSETHOOK", 220: "BRIGHTNESS_DOWN",
-            221: "BRIGHTNESS_UP", 224: "MUTE", 231: "TAB", 255: "WAKEUP",
-            10001: "ASSIST", 10002: "NAVIGATE", 10003: "DICTATE", 10004: "VOICE_ASSIST",
-        };
-        return map[code] || `KEYCODE_UNKNOWN_${code}`;
+    // Parse SystemGestureDispatcher logcat line for touch events
+    function parseLogcatLine(line) {
+        // Format: onPointerEvent: MotionEvent { action=ACTION_DOWN, ..., x[0]=500.0, y[0]=600.0, ..., eventTime=xxxx }
+        const m = line.match(/onPointerEvent: MotionEvent \{ action=ACTION_(\w+),.*?x\[0\]=(-?[\d.]+), y\[0\]=(-?[\d.]+)/);
+        if (!m)
+            return null;
+        const actionName = m[1];
+        // Only DOWN, UP, MOVE — skip HOVER_MOVE, SCROLL, etc.
+        const action = actionName === "DOWN" ? "DOWN" : actionName === "UP" ? "UP" : actionName === "MOVE" ? "MOVE" : null;
+        if (!action)
+            return null;
+        const x = Math.round(parseFloat(m[2]));
+        const y = Math.round(parseFloat(m[3]));
+        if (y < 0 || x < 0)
+            return null;
+        return { action, x, y, time: parseLogcatTimestamp(line) };
     }
-    function parseDumpsysToSteps() {
-        const steps = [];
-        let stepIndex = 0;
-        // Sort by eventTime (monotonic ns), stable for DOWN before UP
-        dumpsysRawEvents.sort((a, b) => a.time - b.time);
-        // Track pending pairs
-        let lastEventTime = null;
-        let pendingTouchDown = null;
-        let pendingKeyTime = null;
-        for (const evt of dumpsysRawEvents) {
-            if (evt.type === "touch") {
-                if (evt.action === "DOWN") {
-                    pendingTouchDown = { x: evt.x, y: evt.y, time: evt.time };
+    // Parse accumulated logcat touch events into steps
+    function parseLogcatToSteps() {
+        // Sort by time just in case
+        logcatRawEvents.sort((a, b) => a.time - b.time);
+        const stepTimes = [];
+        let pendingDown = null;
+        let lastMovePos = null;
+        for (const evt of logcatRawEvents) {
+            if (evt.action === "DOWN") {
+                // Logcat is lossless — flush any previous orphan DOWN (shouldn't happen)
+                if (pendingDown) {
+                    stepTimes.push({ type: "tap", name: `点击 (${pendingDown.x}, ${pendingDown.y})`, value: `${pendingDown.x},${pendingDown.y}`, startTime: pendingDown.time, endTime: pendingDown.time });
                 }
-                else if (evt.action === "UP" && pendingTouchDown) {
-                    const down = pendingTouchDown;
-                    pendingTouchDown = null;
-                    const dx = evt.x - down.x;
-                    const dy = evt.y - down.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const durationNs = evt.time - down.time;
-                    const durationMs = Math.max(1, Math.round(durationNs / 1_000_000));
-                    const delayMs = lastEventTime !== null ? Math.round((down.time - lastEventTime) / 1_000_000) : 300;
-                    lastEventTime = evt.time;
-                    const stepId = `recorded-${stepIndex++}`;
-                    const cappedDelay = String(Math.max(50, Math.min(1000, delayMs)));
-                    if (dist < 30 && durationMs < 800) {
-                        steps.push({ id: stepId, type: "tap", name: `点击 (${down.x}, ${down.y})`, value: `${down.x},${down.y}`, delayMs: cappedDelay });
-                    }
-                    else {
-                        const swipeDur = Math.max(50, durationMs);
-                        steps.push({ id: stepId, type: "swipe", name: `滑动 (${down.x},${down.y})→(${evt.x},${evt.y})`, value: `${down.x},${down.y},${evt.x},${evt.y},${swipeDur}`, delayMs: cappedDelay });
-                    }
-                }
+                pendingDown = { x: evt.x, y: evt.y, time: evt.time };
             }
-            else if (evt.type === "key") {
-                if (evt.action === "DOWN") {
-                    pendingKeyTime = evt.time;
-                }
-                else if (evt.action === "UP" && pendingKeyTime !== null) {
-                    const delayMs = lastEventTime !== null ? Math.round((pendingKeyTime - lastEventTime) / 1_000_000) : 200;
-                    lastEventTime = evt.time;
-                    pendingKeyTime = null;
-                    const keyName = androidKeyCodeToName(evt.keyCode);
-                    const stepId = `recorded-${stepIndex++}`;
-                    steps.push({
-                        id: stepId, type: "key", name: `按键 ${keyName}`,
-                        value: `KEYCODE_${keyName}`,
-                        delayMs: String(Math.max(50, Math.min(1000, delayMs))),
+            else if (evt.action === "MOVE" && pendingDown) {
+                // Track latest MOVE pos for accurate endpoint (don't modify pendingDown)
+                lastMovePos = { x: evt.x, y: evt.y };
+            }
+            else if (evt.action === "UP" && pendingDown) {
+                const durationMs = evt.time - pendingDown.time;
+                // Use last MOVE position as endpoint (more accurate), fallback to UP coords
+                const endX = lastMovePos ? lastMovePos.x : evt.x;
+                const endY = lastMovePos ? lastMovePos.y : evt.y;
+                const dx = endX - pendingDown.x;
+                const dy = endY - pendingDown.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist >= 10) {
+                    // Coordinate change ≥ 10px → swipe (whether or not MOVE events were present)
+                    stepTimes.push({
+                        type: "swipe", name: `滑动 (${pendingDown.x},${pendingDown.y})→(${endX},${endY})`,
+                        value: `${pendingDown.x},${pendingDown.y},${endX},${endY},${Math.max(50, Math.round(durationMs))}`,
+                        startTime: pendingDown.time, endTime: evt.time,
                     });
                 }
+                else if (durationMs >= 800) {
+                    // No/minimal movement, long hold → long press
+                    stepTimes.push({
+                        type: "long_press", name: `长按 (${pendingDown.x}, ${pendingDown.y})`,
+                        value: `${pendingDown.x},${pendingDown.y},${Math.min(Math.round(durationMs), 2000)}`,
+                        startTime: pendingDown.time, endTime: evt.time,
+                    });
+                }
+                else {
+                    // Short tap → tap
+                    stepTimes.push({
+                        type: "tap", name: `点击 (${pendingDown.x}, ${pendingDown.y})`,
+                        value: `${pendingDown.x},${pendingDown.y}`,
+                        startTime: pendingDown.time, endTime: evt.time,
+                    });
+                }
+                pendingDown = null;
+                lastMovePos = null;
             }
+        }
+        // Orphan DOWN at end (user lifted device finger without UP? logcat should never happen)
+        if (pendingDown) {
+            stepTimes.push({ type: "tap", name: `点击 (${pendingDown.x}, ${pendingDown.y})`, value: `${pendingDown.x},${pendingDown.y}`, startTime: pendingDown.time, endTime: pendingDown.time });
+        }
+        // Sort by startTime and build final steps
+        stepTimes.sort((a, b) => a.startTime - b.startTime);
+        const steps = [];
+        for (let i = 0; i < stepTimes.length; i++) {
+            const s = stepTimes[i];
+            const prevEnd = i > 0 ? stepTimes[i - 1].endTime : null;
+            const delayMs = prevEnd !== null ? Math.round((s.startTime - prevEnd)) : 300;
+            steps.push({
+                id: `recorded-${i}`,
+                type: s.type,
+                name: s.name, value: s.value,
+                delayMs: String(Math.max(50, Math.min(1000, delayMs))),
+            });
         }
         return steps;
     }
-    /**
-     * Parse RecentQueue section from dumpsys input output.
-     * @param stdout - raw dumpsys output
-     * @param seedOnly - if true, only populate seenEvents (warmup), skip rawEvents
-     */
-    function buildParseRecentQueueFn(stdout, seedOnly = false) {
-        const text = typeof stdout === "string" ? stdout : stdout.toString("utf-8");
-        const recentMatch = text.match(/RecentQueue:.*?(?=\n  PendingEvent|$)/s);
-        if (!recentMatch)
-            return;
-        const lines = recentMatch[0].split("\n");
-        for (const line of lines) {
-            parseDumpsysRecentQueueLine(line, seedOnly);
+    // Validate that logcat captures touch events; return error reason if not.
+    async function validateLogcatSource(deviceId) {
+        try {
+            // Inject a test tap and check logcat
+            await execFileAsync("adb", ["-s", deviceId, "shell", "input", "tap", "10", "10"], { timeout: 3000 });
+            // Wait for logcat to catch up
+            await new Promise(r => setTimeout(r, 600));
+            // Check if we got any touch events
+            const hasEvents = logcatRawEvents.some(e => e.type === "touch");
+            if (hasEvents)
+                return null;
+            // Second attempt: clear logcat, inject again, wait longer
+            await execFileAsync("adb", ["-s", deviceId, "shell", "logcat", "-c"], { timeout: 2000 }).catch(() => { });
+            await execFileAsync("adb", ["-s", deviceId, "shell", "input", "tap", "10", "10"], { timeout: 3000 });
+            await new Promise(r => setTimeout(r, 1000));
+            const found = logcatRawEvents.some(e => e.type === "touch");
+            if (!found) {
+                return "该设备不支持 logcat 录制模式：未检测到触摸事件日志。\n\n原因可能是：\n1. 当前为 user 版本（非 userdebug/eng）\n2. ADB 连接权限不足\n\n建议：使用 userdebug 版本的系统镜像，或检查 logcat 输出。";
+            }
+            return null;
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return `Logcat 验证失败: ${msg}`;
         }
     }
     ipcMain.handle("recording.start", async (_event, payload) => {
-        if (activeInputRecording || dumpsysPollTimer) {
+        if (logcatProcess) {
             return { status: "error", message: "已有录制在进行中" };
         }
-        const mode = payload.mode || "getevent";
-        currentRecordingMode = mode;
-        inputRecordingBuffer = [];
-        inputRecordingStartTime = Date.now();
-        if (mode === "dumpsys") {
-            // Dumpsys polling mode: periodically fetch RecentQueue from dumpsys input
-            dumpsysSeenEvents = new Set();
-            dumpsysRawEvents = [];
-            dumpsysDeviceIdRunning = payload.deviceId;
-            const pollStartTime = Date.now();
-            async function runPoll() {
-                if (!dumpsysPollTimer)
-                    return; // stopped
-                // Auto-stop after timeout
-                if (Date.now() - pollStartTime >= INPUT_RECORDING_TIMEOUT_MS) {
-                    dumpsysPollTimer = null;
-                    return;
-                }
-                try {
-                    const { stdout } = await execFileAsync("adb", ["-s", dumpsysDeviceIdRunning, "shell", "dumpsys", "input"], { timeout: 5000 });
-                    buildParseRecentQueueFn(stdout);
-                }
-                catch { /* ignore polling errors */ }
-                if (dumpsysPollTimer) {
-                    dumpsysPollTimer = setTimeout(runPoll, 300);
+        logcatRawEvents = [];
+        logcatLineBuffer = "";
+        recordingStartTimeMs = Date.now();
+        // Clear old logcat buffer to avoid picking up stale events
+        execFileAsync("adb", ["-s", payload.deviceId, "shell", "logcat", "-c"], { timeout: 3000 }).catch(() => { });
+        // Start logcat capture — SystemGestureDispatcher for all touch events (DOWN/UP/MOVE)
+        const proc = spawn("adb", ["-s", payload.deviceId, "logcat", "-v", "threadtime", "-s", "SystemGestureDispatcher:W"], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        logcatProcess = proc;
+        proc.stdout?.on("data", (data) => {
+            if (logcatRawEvents.length >= RECORDING_MAX_EVENTS)
+                return;
+            const text = logcatLineBuffer + data.toString("utf-8");
+            const lines = text.split("\n");
+            logcatLineBuffer = lines.pop() ?? "";
+            for (const line of lines) {
+                const parsed = parseLogcatLine(line);
+                if (parsed) {
+                    logcatRawEvents.push({ ...parsed, type: "touch" });
                 }
             }
-            // Step 1: Warmup poll — seed seenEvents so pre-existing events aren't recorded
-            dumpsysPollTimer = setTimeout(async () => {
-                try {
-                    const { stdout } = await execFileAsync("adb", ["-s", dumpsysDeviceIdRunning, "shell", "dumpsys", "input"], { timeout: 5000 });
-                    buildParseRecentQueueFn(stdout, true); // seedOnly=true
-                }
-                catch { /* ignore */ }
-                // Step 2: Start real polling after warmup
-                if (dumpsysPollTimer) {
-                    dumpsysPollTimer = setTimeout(runPoll, 0);
-                }
-            }, 0);
+        });
+        proc.stderr?.on("data", () => { });
+        // Wait a moment for logcat to buffer, then validate
+        await new Promise(r => setTimeout(r, 500));
+        const validationError = await validateLogcatSource(payload.deviceId);
+        if (validationError !== null) {
+            // Validation failed — clean up and return error
+            if (proc === logcatProcess) {
+                logcatProcess = null;
+                proc.kill("SIGTERM");
+            }
+            logcatRawEvents = [];
+            return { status: "error", message: validationError };
         }
-        else {
-            // Getevent mode (existing behavior)
-            const proc = spawn("adb", ["-s", payload.deviceId, "shell", "getevent", "-lt"], {
-                stdio: ["ignore", "pipe", "pipe"],
-            });
-            activeInputRecording = proc;
-            proc.stdout?.on("data", (data) => {
-                if (inputRecordingBuffer.length >= INPUT_RECORDING_MAX_LINES)
-                    return;
-                inputRecordingBuffer.push(data.toString("utf-8"));
-            });
-            proc.stderr?.on("data", () => { });
-            // Auto-stop after timeout
-            setTimeout(() => {
-                if (activeInputRecording === proc) {
-                    proc.kill("SIGTERM");
-                    activeInputRecording = null;
-                }
-            }, INPUT_RECORDING_TIMEOUT_MS);
+        // Clear test tap events used for validation
+        logcatRawEvents = [];
+        // Auto-stop after timeout
+        setTimeout(() => {
+            if (logcatProcess === proc) {
+                logcatProcess = null;
+                proc.kill("SIGTERM");
+            }
+        }, RECORDING_TIMEOUT_MS);
+        console.error("[logcat] Recording started, logcat PID:", proc.pid);
+        return { status: "ok" };
+    });
+    ipcMain.handle("recording.stop", async (_event, payload) => {
+        if (!logcatProcess) {
+            return { status: "error", message: "没有正在进行的录制" };
+        }
+        const durationMs = Date.now() - recordingStartTimeMs;
+        // Kill logcat process
+        const proc = logcatProcess;
+        logcatProcess = null;
+        proc.kill("SIGTERM");
+        await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(), 2000);
+            proc.on("exit", () => { clearTimeout(timer); resolve(); });
+        });
+        console.error("[logcat] Raw events:", JSON.stringify(logcatRawEvents));
+        const rawEventCount = logcatRawEvents.length;
+        const steps = parseLogcatToSteps();
+        console.error("[logcat] Steps:", JSON.stringify(steps));
+        logcatRawEvents = [];
+        return { status: "ok", steps, durationMs, rawLineCount: rawEventCount };
+    });
+    // Debug logging and devtools from renderer
+    ipcMain.handle("debug.log", async (_event, payload) => {
+        console.error("[RENDERER]", payload.message);
+        return { status: "ok" };
+    });
+    ipcMain.handle("debug.openDevTools", async () => {
+        const win = BrowserWindow.getFocusedWindow();
+        if (win) {
+            win.webContents.openDevTools({ mode: "detach" });
         }
         return { status: "ok" };
     });
-    ipcMain.handle("recording.stop", async (_event, _payload) => {
-        if (!activeInputRecording && !dumpsysPollTimer) {
-            return { status: "error", message: "没有正在进行的录制" };
-        }
-        let steps = [];
-        const durationMs = Date.now() - inputRecordingStartTime;
-        if (currentRecordingMode === "dumpsys") {
-            if (dumpsysPollTimer) {
-                clearTimeout(dumpsysPollTimer);
-                dumpsysPollTimer = null;
-            }
-            // One final poll to catch late events
-            try {
-                const { stdout } = await execFileAsync("adb", ["-s", _payload.deviceId, "shell", "dumpsys", "input"], { timeout: 5000 });
-                buildParseRecentQueueFn(stdout);
-            }
-            catch { /* ignore */ }
-            steps = parseDumpsysToSteps();
-        }
-        else {
-            const proc = activeInputRecording;
-            if (proc) {
-                activeInputRecording = null;
-                proc.kill("SIGTERM");
-                await new Promise((resolve) => {
-                    const timer = setTimeout(() => resolve(), 3000);
-                    proc.on("exit", () => { clearTimeout(timer); resolve(); });
-                });
-            }
-            const rawText = inputRecordingBuffer.join("");
-            steps = parseGeteventToSteps(rawText);
-        }
-        return { status: "ok", steps, durationMs, rawLineCount: inputRecordingBuffer.length };
-    });
-    function parseGeteventToSteps(rawText) {
-        const lines = rawText.split("\n");
-        const steps = [];
-        let stepIndex = 0;
-        // getevent -lt format:
-        // [  12345.678901] /dev/input/event0: EV_ABS       ABS_MT_POSITION_X    0000025e
-        const lineRegex = /^\s*\[\s*(\d+\.\d+)\]\s+\/dev\/input\/event(\d+):\s+(\S+)\s+(\S+)\s+(\S+)/;
-        // Touch state (multi-protocol)
-        let touchActive = false;
-        let touchDownX = 0;
-        let touchDownY = 0;
-        let touchDownTime = 0;
-        let lastX = 0;
-        let lastY = 0;
-        // MT Protocol B tracking_id: 0xffffffff = -1 = no touch
-        let currentTrackingId = null;
-        // frame accumulation
-        let frameEvents = [];
-        // Key state
-        let pendingKeyDown = null;
-        for (const line of lines) {
-            const m = line.match(lineRegex);
-            if (!m)
-                continue;
-            const rawType = m[3];
-            const code = m[4];
-            const value = m[5];
-            const timeMs = parseFloat(m[1]) * 1000;
-            if (rawType === "EV_SYN") {
-                // ---- Frame boundary: process accumulated events ----
-                // --- Touch detection via ABS_MT_TRACKING_ID (MT Protocol B) ---
-                const trackingIdEvent = frameEvents.find((fe) => fe.code === "ABS_MT_TRACKING_ID");
-                if (trackingIdEvent) {
-                    const newTid = parseInt(trackingIdEvent.value, 16);
-                    // ffffffff = -1 = finger lifted
-                    if (newTid === -1 && touchActive) {
-                        // Touch UP
-                        touchActive = false;
-                        currentTrackingId = null;
-                        const endX = lastX;
-                        const endY = lastY;
-                        const duration = Math.max(1, Math.round(timeMs - touchDownTime));
-                        const dx = endX - touchDownX;
-                        const dy = endY - touchDownY;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        const stepId = `recorded-${stepIndex++}`;
-                        if (dist < 30 && duration < 800) {
-                            steps.push({ id: stepId, type: "tap", name: `点击 (${touchDownX}, ${touchDownY})`, value: `${touchDownX},${touchDownY}`, delayMs: "300" });
-                        }
-                        else {
-                            steps.push({ id: stepId, type: "swipe", name: `滑动 (${touchDownX},${touchDownY})→(${endX},${endY})`, value: `${touchDownX},${touchDownY},${endX},${endY},${Math.max(50, duration)}`, delayMs: "300" });
-                        }
-                    }
-                    else if (newTid >= 0 && !touchActive) {
-                        // Touch DOWN via new tracking_id
-                        touchActive = true;
-                        currentTrackingId = newTid;
-                        const posX = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_X");
-                        const posY = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_Y");
-                        touchDownX = posX ? parseInt(posX.value, 16) : lastX;
-                        touchDownY = posY ? parseInt(posY.value, 16) : lastY;
-                        lastX = touchDownX;
-                        lastY = touchDownY;
-                        touchDownTime = timeMs;
-                    }
-                }
-                // --- Fallback: BTN_TOUCH detection (MT Protocol A) ---
-                if (!trackingIdEvent) {
-                    const hasBtnTouch = frameEvents.find((fe) => fe.code === "BTN_TOUCH");
-                    if (hasBtnTouch) {
-                        if (hasBtnTouch.value === "DOWN" && !touchActive) {
-                            touchActive = true;
-                            const posX = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_X");
-                            const posY = frameEvents.find((fe) => fe.code === "ABS_MT_POSITION_Y");
-                            touchDownX = posX ? parseInt(posX.value, 16) : lastX;
-                            touchDownY = posY ? parseInt(posY.value, 16) : lastY;
-                            lastX = touchDownX;
-                            lastY = touchDownY;
-                            touchDownTime = timeMs;
-                        }
-                        else if (hasBtnTouch.value === "UP" && touchActive) {
-                            touchActive = false;
-                            const endX = lastX;
-                            const endY = lastY;
-                            const duration = Math.max(1, Math.round(timeMs - touchDownTime));
-                            const dx = endX - touchDownX;
-                            const dy = endY - touchDownY;
-                            const dist = Math.sqrt(dx * dx + dy * dy);
-                            const stepId = `recorded-${stepIndex++}`;
-                            if (dist < 30 && duration < 800) {
-                                steps.push({ id: stepId, type: "tap", name: `点击 (${touchDownX}, ${touchDownY})`, value: `${touchDownX},${touchDownY}`, delayMs: "300" });
-                            }
-                            else {
-                                steps.push({ id: stepId, type: "swipe", name: `滑动 (${touchDownX},${touchDownY})→(${endX},${endY})`, value: `${touchDownX},${touchDownY},${endX},${endY},${Math.max(50, duration)}`, delayMs: "300" });
-                            }
-                        }
-                    }
-                }
-                // --- Key events (excluding touch-related BTN_*) ---
-                const keyEvent = frameEvents.find((fe) => fe.type === "EV_KEY" && fe.code !== "BTN_TOUCH" && fe.code !== "BTN_TOOL_FINGER" && !fe.code.startsWith("BTN_"));
-                if (keyEvent) {
-                    if (keyEvent.value === "DOWN") {
-                        pendingKeyDown = { name: keyEvent.code, valueHex: "" };
-                    }
-                    else if (keyEvent.value === "UP" && pendingKeyDown && pendingKeyDown.name === keyEvent.code) {
-                        const stepId = `recorded-${stepIndex++}`;
-                        const keyName = keyEvent.code.replace(/^KEY_/, "");
-                        steps.push({ id: stepId, type: "key", name: `按键 ${keyName}`, value: `KEYCODE_${keyName}`, delayMs: "200" });
-                        pendingKeyDown = null;
-                    }
-                }
-                frameEvents = [];
-            }
-            else {
-                // Accumulate frame events
-                frameEvents.push({ type: rawType, code, value });
-                // Track position from any frame for lastX/lastY
-                if (code === "ABS_MT_POSITION_X" && rawType === "EV_ABS") {
-                    lastX = parseInt(value, 16);
-                }
-                else if (code === "ABS_MT_POSITION_Y" && rawType === "EV_ABS") {
-                    lastY = parseInt(value, 16);
-                }
-            }
-        }
-        return steps;
-    }
     // Crash/ANR - list files from device
     ipcMain.handle("crash.list", async (_event, payload) => {
         try {
@@ -1703,6 +1563,20 @@ function createWindow() {
         return;
     }
     void window.loadURL(`http://127.0.0.1:${perfApiPort}/`);
+    // Packaged (release) builds: disable DevTools entirely
+    if (app.isPackaged) {
+        window.webContents.on("before-input-event", (event, input) => {
+            if (input.key === "F12" ||
+                (input.control && input.shift && (input.key === "I" || input.key === "J")) ||
+                (input.control && input.shift && input.key === "i")) {
+                event.preventDefault();
+            }
+        });
+    }
+    else {
+        // Dev builds: optionally open DevTools for debugging
+        window.webContents.openDevTools({ mode: "detach" });
+    }
 }
 // Must be called before app.whenReady
 protocol.registerSchemesAsPrivileged([

@@ -3205,6 +3205,9 @@ h3 {
 
 .keysim-quick-add-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .keysim-quick-add-menu {
@@ -3213,7 +3216,7 @@ h3 {
   top: calc(100% + 6px);
   z-index: 20;
   min-width: 140px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
   border-radius: 10px;
   background: var(--bg-surface-strong);
   box-shadow: var(--shadow-card);
@@ -3269,7 +3272,7 @@ h3 {
   margin-top: 8px;
 }
 .keysim-rec-step-list {
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
   border-radius: 6px;
   overflow: hidden;
 }
@@ -3284,7 +3287,7 @@ h3 {
   gap: 0;
   align-items: center;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
   font-size: 12px;
 }
 .keysim-rec-step-list .keysim-finger-row:last-child {
@@ -3431,8 +3434,8 @@ h3 {
 }
 
 .keysim-picker-modal {
-  width: min(90vw, 520px);
-  max-height: 85vh;
+  width: min(90vw, 1040px);
+  max-height: 102vh;
   overflow-y: auto;
 }
 
@@ -3514,7 +3517,7 @@ h3 {
 
 .keysim-screenshot-shell {
   margin-top: 12px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
   border-radius: 10px;
   overflow: hidden;
   background: var(--panel-bg);
@@ -3598,11 +3601,75 @@ h3 {
   grid-template-columns: auto 110px 1fr 120px auto;
 }
 
+.keysim-mt-finger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keysim-mt-finger-card {
+  border: 1px solid rgba(29, 134, 217, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.keysim-mt-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.keysim-mt-card-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.keysim-mt-card-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.keysim-mt-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 0 0;
+  min-width: 60px;
+}
+
+.keysim-mt-input-group > span {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.keysim-mt-input-group > input {
+  min-height: 30px;
+  border: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--surface);
+  color: var(--text-main);
+  font-size: 12px;
+  width: 100%;
+}
+
+.keysim-mt-input-group > input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 .keysim-finger-row input,
 .keysim-macro-row input,
 .keysim-macro-row select {
   min-height: 34px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--border-default, rgba(29, 134, 217, 0.14));
   border-radius: 8px;
   padding: 6px 8px;
   background: var(--surface);
@@ -4427,6 +4494,15 @@ mark {
   .keysim-quick-card.size-2x2 {
     grid-column: span 1;
   }
+.keysim-notice-bar {
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
 
   .device-file-toolbar {
     flex-direction: column;

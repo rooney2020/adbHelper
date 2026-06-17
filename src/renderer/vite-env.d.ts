@@ -101,8 +101,12 @@ declare global {
         stopRecord: (payload: { deviceId: string }) => Promise<{ status: string; localPath?: string; message?: string }>;
       };
       recording: {
-        start: (payload: { deviceId: string; mode?: "getevent" | "dumpsys" }) => Promise<{ status: string; message?: string }>;
+        start: (payload: { deviceId: string }) => Promise<{ status: string; message?: string }>;
         stop: (payload: { deviceId: string }) => Promise<{ status: string; steps?: Array<{ id: string; type: string; name: string; value: string; delayMs: string }>; durationMs?: number; rawLineCount?: number; message?: string }>;
+      };
+      debug: {
+        log: (payload: { message: string }) => Promise<{ status: string }>;
+        openDevTools: () => Promise<{ status: string }>;
       };
     };
   }

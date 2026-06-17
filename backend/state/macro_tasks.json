@@ -1,0 +1,15 @@
+[
+  {
+    "id": "macro-task-1",
+    "name": "默认编排任务",
+    "steps": [
+      {
+        "id": "macro-1",
+        "type": "key",
+        "name": "回到桌面",
+        "value": "KEYCODE_HOME",
+        "delayMs": "300"
+      }
+    ]
+  }
+]

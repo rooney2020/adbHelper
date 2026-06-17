@@ -84,7 +84,10 @@ const KEY_SIM_QUICK_TYPE_DEFAULTS: Record<KeySimQuickActionType, string> = {
   key: "KEYCODE_HOME",
   tap: "540,1800",
   swipe: "540,1800,540,600,300",
-  multitouch: "200,1200,200,400,300;880,1200,880,400,300",
+  multitouch: "540,1200,540,600,300", // single finger by default, add more interactively
+  long_press: "540,1800,800",
+  advanced_key: "DOWN KEYCODE_HOME,,300\nUP KEYCODE_HOME,,0",
+  adb: "shell input keyevent KEYCODE_HOME",
 };
 
 const KEY_SIM_KNOWN_KEYCODES = [
@@ -154,7 +157,7 @@ interface KeySimFingerPath {
   durationMs: string;
 }
 
-type KeySimQuickActionType = "key" | "tap" | "swipe" | "multitouch";
+type KeySimQuickActionType = "key" | "tap" | "swipe" | "multitouch" | "long_press" | "advanced_key" | "adb";
 
 interface KeySimQuickAction {
   id: string;
@@ -166,7 +169,7 @@ interface KeySimQuickAction {
   durationMs: string;
 }
 
-type KeySimMacroStepType = "key" | "tap" | "swipe" | "adb";
+type KeySimMacroStepType = "key" | "tap" | "long_press" | "swipe" | "adb";
 
 interface KeySimMacroStep {
   id: string;
@@ -1242,6 +1245,7 @@ const PANEL_STORAGE_KEY = "adb-helper.panels.v1";
 const CUSTOM_COMMANDS_STORAGE_KEY = "adb-helper.custom-commands.v1";
 const THEME_STORAGE_KEY = "adb-helper.theme.v1";
 const GENERAL_SETTINGS_STORAGE_KEY = "adb-helper.general-settings.v1";
+const KEYSIM_QUICK_ACTIONS_STORAGE_KEY = "adb-helper.keysim-quick-actions.v1";
 const KEYSIM_MACRO_TASKS_STORAGE_KEY = "adb-helper.keysim-macro-tasks.v1";
 
 interface CustomCommandParam {
@@ -2258,7 +2262,6 @@ export default function App() {
   const [probeResult, setProbeResult] = useState<Record<string, string> | null>(null);
   const [deviceInfoTab, setDeviceInfoTab] = useState<DeviceInfoTab>("basic");
   const [keySimTab, setKeySimTab] = useState<KeySimTab>("quick");
-  const [keySimNotice, setKeySimNotice] = useState<string | null>(null);
   const [keySimBusy, setKeySimBusy] = useState(false);
   const [keySimScreenshotLoading, setKeySimScreenshotLoading] = useState(false);
   const [keySimScreenshotDataUrl, setKeySimScreenshotDataUrl] = useState("");
@@ -2269,7 +2272,29 @@ export default function App() {
   const [keySimSwipeStart, setKeySimSwipeStart] = useState<{ x: number; y: number } | null>(null);
   const [keySimSwipeEnd, setKeySimSwipeEnd] = useState<{ x: number; y: number } | null>(null);
   const [keySimSwipeDurationMs, setKeySimSwipeDurationMs] = useState("300");
-  const [keySimQuickActions, setKeySimQuickActions] = useState<KeySimQuickAction[]>(KEY_SIM_DEFAULT_QUICK_ACTIONS);
+  const [keySimQuickActions, setKeySimQuickActions] = useState<KeySimQuickAction[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(KEYSIM_QUICK_ACTIONS_STORAGE_KEY);
+      if (!raw) return KEY_SIM_DEFAULT_QUICK_ACTIONS;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) return KEY_SIM_DEFAULT_QUICK_ACTIONS;
+      const valid = parsed.filter((item: unknown): item is KeySimQuickAction => {
+        if (!item || typeof item !== "object") return false;
+        const obj = item as Record<string, unknown>;
+        return (
+          typeof obj.name === "string" &&
+          typeof obj.type === "string" &&
+          typeof obj.value === "string" &&
+          typeof obj.size === "string" &&
+          typeof obj.pressMode === "string" &&
+          typeof obj.durationMs === "string"
+        );
+      });
+      return valid.length > 0 ? valid : KEY_SIM_DEFAULT_QUICK_ACTIONS;
+    } catch {
+      return KEY_SIM_DEFAULT_QUICK_ACTIONS;
+    }
+  });
   const [keySimQuickAddMenuOpen, setKeySimQuickAddMenuOpen] = useState(false);
   const [keySimQuickDraft, setKeySimQuickDraft] = useState<KeySimQuickAction | null>(null);
   const [keySimQuickDraftMode, setKeySimQuickDraftMode] = useState<"create" | "edit">("create");
@@ -2280,6 +2305,7 @@ export default function App() {
   const [keySimQuickPickerTapPoint, setKeySimQuickPickerTapPoint] = useState<{ x: number; y: number } | null>(null);
   const [keySimQuickPickerSwipeStart, setKeySimQuickPickerSwipeStart] = useState<{ x: number; y: number } | null>(null);
   const [keySimQuickPickerSwipeEnd, setKeySimQuickPickerSwipeEnd] = useState<{ x: number; y: number } | null>(null);
+  const [keySimQuickPickerFingerIndex, setKeySimQuickPickerFingerIndex] = useState<number | null>(null);
   const [keySimFingerPaths, setKeySimFingerPaths] = useState<KeySimFingerPath[]>([
     { id: "finger-1", startX: "200", startY: "1200", endX: "200", endY: "400", durationMs: "300" },
     { id: "finger-2", startX: "880", startY: "1200", endX: "880", endY: "400", durationMs: "300" },
@@ -2531,7 +2557,7 @@ export default function App() {
   const [recordedSteps, setRecordedSteps] = useState<KeySimMacroStep[]>([]);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
-  const [recordingMode, setRecordingMode] = useState<"getevent" | "dumpsys">("getevent");
+
   const [uiToast, setUiToast] = useState<ToastNotice | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const confirmActionRef = useRef<(() => void) | null>(null);
@@ -3243,6 +3269,11 @@ export default function App() {
       return;
     }
 
+    window.localStorage.setItem(KEYSIM_QUICK_ACTIONS_STORAGE_KEY, JSON.stringify(keySimQuickActions));
+  }, [keySimQuickActions]);
+
+  // Save macro tasks to localStorage and backend
+  useEffect(() => {
     window.localStorage.setItem(KEYSIM_MACRO_TASKS_STORAGE_KEY, JSON.stringify(keySimMacroTasks));
     if (macroTasksFileReadyRef.current) {
       runtimeApi.macroTasks.save({ tasks: keySimMacroTasks });
@@ -6086,7 +6117,6 @@ export default function App() {
       return;
     }
     setKeySimBusy(true);
-    setKeySimNotice(null);
     try {
       const startedAt = performance.now();
       const response = await runtimeApi.command.run({
@@ -6099,9 +6129,9 @@ export default function App() {
         source: "user"
       });
       applyRunResponse(response, Math.round(performance.now() - startedAt));
-      setKeySimNotice(`已执行：${title}`);
+      pushUiToast(`已执行：${title}`, "info");
     } catch (error) {
-      setKeySimNotice(`执行失败：${error instanceof Error ? error.message : String(error)}`);
+      pushUiToast(`执行失败：${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setKeySimBusy(false);
     }
@@ -6109,11 +6139,10 @@ export default function App() {
 
   async function handleRefreshKeySimScreenshot() {
     if (!currentDeviceId) {
-      setKeySimNotice("请先选择设备");
+      pushUiToast("请先选择设备", "warning");
       return;
     }
     setKeySimScreenshotLoading(true);
-    setKeySimNotice(null);
     let response: { status?: string; dataUrl?: string; message?: string } | null = null;
     if (!isBrowserPreviewMode) {
       try {
@@ -6128,7 +6157,7 @@ export default function App() {
       response = fallback;
     }
     if (!response || response.status !== "ok" || !response.dataUrl) {
-      setKeySimNotice(response?.message ?? "获取截图失败");
+      pushUiToast(response?.message ?? "获取截图失败", "error");
       setKeySimScreenshotLoading(false);
       return;
     }
@@ -6176,7 +6205,7 @@ export default function App() {
 
   async function handleRunKeySimTap() {
     if (!keySimTapPoint) {
-      setKeySimNotice("请先在截图上点击目标位置");
+      pushUiToast("请先在截图上点击目标位置", "warning");
       return;
     }
     await runKeySimCommand(`adb shell input tap ${keySimTapPoint.x} ${keySimTapPoint.y}`, `点击坐标 (${keySimTapPoint.x}, ${keySimTapPoint.y})`);
@@ -6184,7 +6213,7 @@ export default function App() {
 
   async function handleRunKeySimSwipe() {
     if (!keySimSwipeStart || !keySimSwipeEnd) {
-      setKeySimNotice("请先在截图上选择滑动起点和终点");
+      pushUiToast("请先在截图上选择滑动起点和终点", "warning");
       return;
     }
     const duration = Math.max(Number(keySimSwipeDurationMs || "300"), 1);
@@ -6209,26 +6238,27 @@ export default function App() {
 
     if (keySimMode === "tap") {
       setKeySimTapPoint(point);
-      setKeySimNotice(`已设置点击坐标：(${point.x}, ${point.y})`);
+      pushUiToast(`已设置点击坐标：(${point.x}, ${point.y})`, "info");
       return;
     }
 
     if (!keySimSwipeStart) {
       setKeySimSwipeStart(point);
       setKeySimSwipeEnd(null);
-      setKeySimNotice(`已设置滑动起点：(${point.x}, ${point.y})`);
+      pushUiToast(`已设置滑动起点：(${point.x}, ${point.y})`, "info");
     } else {
       setKeySimSwipeEnd(point);
-      setKeySimNotice(`已设置滑动终点：(${point.x}, ${point.y})`);
+      pushUiToast(`已设置滑动终点：(${point.x}, ${point.y})`, "info");
     }
   }
 
-  async function openQuickDraftScreenshotPicker(mode: "tap" | "swipe", target: "quick" | "macro" = "quick") {
+  async function openQuickDraftScreenshotPicker(mode: "tap" | "swipe", target: "quick" | "macro" = "quick", fingerIndex?: number) {
     setKeySimQuickPickerMode(mode);
     setKeySimPickerTarget(target);
     setKeySimQuickPickerTapPoint(null);
     setKeySimQuickPickerSwipeStart(null);
     setKeySimQuickPickerSwipeEnd(null);
+    setKeySimQuickPickerFingerIndex(fingerIndex ?? null);
     setKeySimQuickPickerOpen(true);
     if (!keySimScreenshotDataUrl) {
       await handleRefreshKeySimScreenshot();
@@ -6267,16 +6297,33 @@ export default function App() {
 
     if (keySimQuickPickerMode === "tap") {
       if (!keySimQuickPickerTapPoint) {
-        setKeySimNotice("请先在截图中选择点击坐标");
+        pushUiToast("请先在截图中选择点击坐标", "warning");
         return;
       }
-      setKeySimQuickDraft((current) => current ? { ...current, value: `${keySimQuickPickerTapPoint.x},${keySimQuickPickerTapPoint.y}` } : current);
+      const currentParts = keySimQuickDraft.value.split(",").map((item) => item.trim());
+      // Preserve duration for long_press type (x,y,duration)
+      const durationPart = currentParts.length >= 3 && !Number.isNaN(Number(currentParts[2])) ? `,${currentParts[2].trim()}` : "";
+      setKeySimQuickDraft((current) => current ? { ...current, value: `${keySimQuickPickerTapPoint.x},${keySimQuickPickerTapPoint.y}${durationPart}` } : current);
       setKeySimQuickPickerOpen(false);
       return;
     }
 
     if (!keySimQuickPickerSwipeStart || !keySimQuickPickerSwipeEnd) {
-      setKeySimNotice("请先在截图中选择滑动起点和终点");
+      pushUiToast("请先在截图中选择滑动起点和终点", "warning");
+      return;
+    }
+    // If targeting a specific finger index (multitouch), update only that finger
+    if (keySimQuickPickerFingerIndex !== null) {
+      const tracks = keySimQuickDraft.value
+        .split(";")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const currentDuration = (tracks[keySimQuickPickerFingerIndex]?.split(",")[4] ?? "300").trim();
+      const duration = currentDuration && !Number.isNaN(Number(currentDuration)) ? currentDuration : "300";
+      tracks[keySimQuickPickerFingerIndex] = `${keySimQuickPickerSwipeStart.x},${keySimQuickPickerSwipeStart.y},${keySimQuickPickerSwipeEnd.x},${keySimQuickPickerSwipeEnd.y},${duration}`;
+      setKeySimQuickDraft((current) => (current ? { ...current, value: tracks.join(";") } : current));
+      setKeySimQuickPickerFingerIndex(null);
+      setKeySimQuickPickerOpen(false);
       return;
     }
     const currentParts = keySimQuickDraft.value.split(",").map((item) => item.trim());
@@ -6294,16 +6341,18 @@ export default function App() {
 
     if (keySimQuickPickerMode === "tap") {
       if (!keySimQuickPickerTapPoint) {
-        setKeySimNotice("请先在截图中选择点击坐标");
+        pushUiToast("请先在截图中选择点击坐标", "warning");
         return;
       }
-      setKeySimMacroDraft((current) => current ? { ...current, value: `${keySimQuickPickerTapPoint.x},${keySimQuickPickerTapPoint.y}` } : current);
+      const currentParts = keySimMacroDraft.value.split(",").map((item) => item.trim());
+      const durationPart = currentParts.length >= 3 && !Number.isNaN(Number(currentParts[2])) ? `,${currentParts[2].trim()}` : "";
+      setKeySimMacroDraft((current) => current ? { ...current, value: `${keySimQuickPickerTapPoint.x},${keySimQuickPickerTapPoint.y}${durationPart}` } : current);
       setKeySimQuickPickerOpen(false);
       return;
     }
 
     if (!keySimQuickPickerSwipeStart || !keySimQuickPickerSwipeEnd) {
-      setKeySimNotice("请先在截图中选择滑动起点和终点");
+      pushUiToast("请先在截图中选择滑动起点和终点", "warning");
       return;
     }
     const currentParts = keySimMacroDraft.value.split(",").map((item) => item.trim());
@@ -6327,9 +6376,10 @@ export default function App() {
   }
 
   function createQuickActionDraft(type: KeySimQuickActionType, name?: string): KeySimQuickAction {
+    const defaultName = type === "key" ? "按键动作" : type === "tap" ? "点击动作" : type === "long_press" ? "长按动作" : type === "swipe" ? "滑动动作" : type === "multitouch" ? "多指滑动" : type === "advanced_key" ? "高级按键" : "ADB 命令";
     return {
       id: `quick-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: name ?? (type === "key" ? "按键动作" : type === "tap" ? "点击动作" : "滑动动作"),
+      name: name ?? defaultName,
       type,
       value: KEY_SIM_QUICK_TYPE_DEFAULTS[type],
       size: "1x1",
@@ -6426,11 +6476,16 @@ export default function App() {
       if (parts.length !== 2 || parts.some((item) => Number.isNaN(Number(item)))) {
         return { command: "", title, error: "点击参数格式应为 x,y" };
       }
-      if (action.pressMode === "long") {
-        const holdDuration = Math.max(Number(action.durationMs || "500"), 1);
-        return { command: `adb shell input swipe ${parts[0]} ${parts[1]} ${parts[0]} ${parts[1]} ${holdDuration}`, title: `${title}（长按）` };
-      }
       return { command: `adb shell input tap ${parts[0]} ${parts[1]}`, title };
+    }
+
+    if (action.type === "long_press") {
+      const parts = value.split(",").map((item) => item.trim());
+      if (parts.length < 3 || Number.isNaN(Number(parts[0])) || Number.isNaN(Number(parts[1]))) {
+        return { command: "", title, error: "长按参数格式应为 x,y,duration" };
+      }
+      const holdDuration = Math.max(Number(parts[2] || "800"), 1);
+      return { command: `adb shell input swipe ${parts[0]} ${parts[1]} ${parts[0]} ${parts[1]} ${holdDuration}`, title: `${title}（${holdDuration}ms）` };
     }
 
     if (action.type === "swipe") {
@@ -6442,6 +6497,36 @@ export default function App() {
       return { command: `adb shell input swipe ${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${duration}`, title };
     }
 
+    if (action.type === "advanced_key") {
+      const lines = value.split("\n").map((l) => l.trim()).filter(Boolean);
+      const commands: string[] = [];
+      for (const line of lines) {
+        // Format: ACTION keycode, x, y, delayMs
+        // Example: DOWN KEYCODE_HOME,,300
+        const m = line.match(/^(DOWN|UP|MOVE)\s+(\S+?)(?:,(\d*),(\d*))?\s+(\d+)$/i);
+        if (!m) {
+          return { command: "", title, error: `无法解析行: "${line}"，格式: ACTION keycode,x,y delayMs` };
+        }
+        const act = m[1].toUpperCase();
+        const keycode = m[2];
+        const delayMs = parseInt(m[5], 10);
+        if (delayMs > 0) {
+          commands.push(`sleep ${(delayMs / 1000).toFixed(2)}`);
+        }
+        commands.push(`input keyevent ${act === "DOWN" ? "--down " : act === "UP" ? "--up " : "--move "}${keycode}`);
+      }
+      if (commands.length === 0) {
+        return { command: "", title, error: "至少需要一行按键动作" };
+      }
+      return { command: `adb shell sh -c "${commands.join(" && ")}"`, title };
+    }
+
+    if (action.type === "adb") {
+      return { command: `adb ${value}`, title };
+    }
+
+    // multitouch: multi-finger swipe with per-finger delay
+    // Format: startX,startY,endX,endY,durationMs,delayMs; ...
     const tracks = value
       .split(";")
       .map((item) => item.trim())
@@ -6453,11 +6538,16 @@ export default function App() {
           return "";
         }
         const duration = parts[4] && !Number.isNaN(Number(parts[4])) ? parts[4] : "300";
-        return `input swipe ${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${duration}`;
+        const delayMs = parseInt(parts[5], 10) || 0;
+        const swipeCmd = `input swipe ${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${duration}`;
+        if (delayMs > 0) {
+          return `sleep ${(delayMs / 1000).toFixed(2)}; ${swipeCmd}`;
+        }
+        return swipeCmd;
       })
       .filter(Boolean);
     if (commands.length === 0) {
-      return { command: "", title, error: "多指参数格式应为 x1,y1,x2,y2,duration; x1,y1,x2,y2,duration" };
+      return { command: "", title, error: "多指参数格式应为 startX,startY,endX,endY,durationMs,delayMs; ..." };
     }
     return { command: `adb shell sh -c "${commands.join(" & ")} & wait"`, title: `${title}（${commands.length} 指）` };
   }
@@ -6465,7 +6555,7 @@ export default function App() {
   async function handleRunQuickAction(action: KeySimQuickAction) {
     const resolved = resolveQuickActionCommand(action);
     if (!resolved.command) {
-      setKeySimNotice(`${resolved.title}：${resolved.error ?? "参数无效"}`);
+      pushUiToast(`${resolved.title}：${resolved.error ?? "参数无效"}`, "error");
       return;
     }
     await runKeySimCommand(resolved.command, resolved.title);
@@ -6476,9 +6566,27 @@ export default function App() {
       return `${action.pressMode === "long" ? "长按" : "单击"} ${action.value}`;
     }
     if (action.type === "tap") {
-      return `${action.pressMode === "long" ? `长按 ${action.durationMs}ms` : "单击"} ${action.value}`;
+      return `单击 ${action.value}`;
     }
-    return action.value;
+    if (action.type === "long_press") {
+      const parts = action.value.split(",");
+      const dur = parts[2] ? parts[2].trim() : "800";
+      return `长按 ${dur}ms (${parts[0]},${parts[1]})`;
+    }
+    if (action.type === "swipe") {
+      const parts = action.value.split(",");
+      return `滑动 ${parts[0]},${parts[1]} → ${parts[2]},${parts[3]}`;
+    }
+    if (action.type === "advanced_key") {
+      const count = action.value.split("\n").filter(Boolean).length;
+      return `高级按键：${count} 步`;
+    }
+    if (action.type === "adb") {
+      const cmd = action.value.substring(0, 40);
+      return `ADB: ${cmd}${action.value.length > 40 ? "…" : ""}`;
+    }
+    const tracks = action.value.split(";").filter(Boolean);
+    return `多指：${tracks.length} 指`;
   }
 
   async function handleRunMultiTouchSwipe() {
@@ -6497,7 +6605,7 @@ export default function App() {
       .filter(Boolean);
 
     if (commands.length === 0) {
-      setKeySimNotice("请至少配置一条有效的手势轨迹");
+      pushUiToast("请至少配置一条有效的手势轨迹", "warning");
       return;
     }
     const shellScript = `${commands.join(" & ")} & wait`;
@@ -6508,16 +6616,16 @@ export default function App() {
     return {
       id: `macro-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type,
-      name: type === "key" ? "按键步骤" : type === "tap" ? "点击步骤" : type === "swipe" ? "滑动步骤" : "ADB步骤",
-      value: type === "key" ? "KEYCODE_HOME" : type === "tap" ? "540,1800" : type === "swipe" ? "540,1800,540,600,300" : "adb shell input keyevent KEYCODE_HOME",
+      name: type === "key" ? "按键步骤" : type === "tap" ? "点击步骤" : type === "long_press" ? "长按步骤" : type === "swipe" ? "滑动步骤" : "ADB步骤",
+      value: type === "key" ? "KEYCODE_HOME" : type === "tap" ? "540,1800" : type === "long_press" ? "540,1800,800" : type === "swipe" ? "540,1800,540,600,300" : "adb shell input keyevent KEYCODE_HOME",
       delayMs: "300"
     };
   }
 
-  function openCreateMacroTask() {
+  function openCreateMacroTask(initialSteps?: KeySimMacroStep[]) {
     setKeySimMacroTaskDraftId(null);
     setKeySimMacroTaskDraftName(`编排任务 ${keySimMacroTasks.length + 1}`);
-    setKeySimMacroSteps([]);
+    setKeySimMacroSteps(initialSteps ?? []);
     setKeySimMacroTaskDialogOpen(true);
     setKeySimMacroAddMenuOpen(false);
     setKeySimMacroDraft(null);
@@ -6611,22 +6719,27 @@ export default function App() {
       const duration = parts[4] ? parts[4] : "300";
       return `adb shell input swipe ${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${duration}`;
     }
+    if (step.type === "long_press") {
+      const parts = value.split(",").map((item) => item.trim());
+      if (parts.length < 3) return "";
+      const dur = parts[2] || "800";
+      return `adb shell input swipe ${parts[0]} ${parts[1]} ${parts[0]} ${parts[1]} ${dur}`;
+    }
     return value;
   }
 
   async function handleRunMacroSteps(steps: KeySimMacroStep[], taskName: string, runningTaskId?: string | null) {
     if (!steps.length) {
-      setKeySimNotice("请先添加宏步骤");
+      pushUiToast("请先添加宏步骤", "warning");
       return;
     }
     setKeySimMacroRunningTaskId(runningTaskId ?? "");
-    setKeySimNotice(null);
     try {
       for (let index = 0; index < steps.length; index++) {
         const step = steps[index];
         const command = resolveMacroStepCommand(step);
         if (!command) {
-          setKeySimNotice(`第 ${index + 1} 步配置无效，已跳过`);
+          pushUiToast(`第 ${index + 1} 步配置无效，已跳过`, "warning");
           continue;
         }
         // Keep macro deterministic: execute step by step with explicit delay.
@@ -6638,14 +6751,14 @@ export default function App() {
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
-      setKeySimNotice(`${taskName} 执行完成`);
+      pushUiToast(`${taskName} 执行完成`, "info");
     } finally {
       setKeySimMacroRunningTaskId(null);
     }
   }
 
   async function handleRunMacroTask(task: KeySimMacroTask) {
-    await handleRunMacroSteps(task.steps, task.name);
+    await handleRunMacroSteps(task.steps, task.name, task.id);
   }
 
   async function handleRunMacroTaskRepeated() {
@@ -6654,7 +6767,7 @@ export default function App() {
     }
     const targetTask = keySimMacroTasks.find((task) => task.id === keySimMacroRepeatDialog.taskId);
     if (!targetTask) {
-      setKeySimNotice("未找到要重复执行的编排任务");
+      pushUiToast("未找到要重复执行的编排任务", "error");
       setKeySimMacroRepeatDialog(null);
       return;
     }
@@ -6665,7 +6778,7 @@ export default function App() {
     setKeySimMacroRepeatProgress({ current: 0, total: repeatCount });
     for (let i = 0; i < repeatCount; i += 1) {
       if (keySimMacroRepeatCancelRef.current) {
-        setKeySimNotice(`已终止，完成 ${i}/${repeatCount} 次`);
+        pushUiToast(`已终止，完成 ${i}/${repeatCount} 次`, "warning");
         break;
       }
       setKeySimMacroRepeatProgress({ current: i + 1, total: repeatCount });
@@ -6689,15 +6802,15 @@ export default function App() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function handleStartRecording() {
-    if (!currentDeviceId) { setKeySimNotice("请先选择设备"); return; }
+    if (!currentDeviceId) { pushUiToast("请先选择设备", "warning"); return; }
     setRecordingStatus("recording");
     setRecordedSteps([]);
     setRecordingDuration(0);
     setRecordingElapsed(0);
-    const result = await runtimeApi.recording.start({ deviceId: currentDeviceId, mode: recordingMode });
+    const result = await runtimeApi.recording.start({ deviceId: currentDeviceId });
     if (result.status !== "ok") {
       setRecordingStatus("idle");
-      setKeySimNotice(result.message || "开始录制失败");
+      pushUiToast(result.message || "开始录制失败", "error");
       return;
     }
     // Start elapsed timer
@@ -6715,7 +6828,7 @@ export default function App() {
     const result = await runtimeApi.recording.stop({ deviceId: currentDeviceId });
     if (result.status !== "ok" || !result.steps) {
       setRecordingStatus("idle");
-      setKeySimNotice(result.message || "停止录制失败");
+      pushUiToast(result.message || "停止录制失败", "error");
       return;
     }
     const steps = result.steps as KeySimMacroStep[];
@@ -6734,7 +6847,7 @@ export default function App() {
       // eslint-disable-next-line no-await-in-loop
       await handleRunMacroTask(task);
     }
-    setKeySimNotice(`已终止，共执行 ${count} 次`);
+    pushUiToast(`已终止，共执行 ${count} 次`, "warning");
     setKeySimMacroRepeatProgress(null);
   }
 
@@ -6871,20 +6984,10 @@ export default function App() {
             </div>
           </div>
           <button
-            className={`icon-button refresh-button${refreshing ? " refreshing" : ""}`}
-            disabled={refreshing}
-            onClick={async () => {
-              setRefreshing(true);
-              try {
-                const items = await runtimeApi.device.list();
-                applyDeviceCatalog(items);
-              } catch {
-                // device list unchanged on error
-              }
-              setTimeout(() => setRefreshing(false), 600);
-            }}
-            aria-label="刷新设备列表"
-            title="刷新设备列表"
+            className="icon-button"
+            onClick={() => window.location.reload()}
+            aria-label="刷新页面"
+            title="刷新页面（Ctrl+Shift+R）"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
           </button>
@@ -7385,8 +7488,7 @@ export default function App() {
           recordedSteps={recordedSteps}
           recordingDuration={recordingDuration}
           recordingElapsed={recordingElapsed}
-          recordingMode={recordingMode}
-          setRecordingMode={setRecordingMode}
+
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
         />

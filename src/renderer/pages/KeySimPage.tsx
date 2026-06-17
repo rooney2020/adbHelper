@@ -3,8 +3,8 @@ import type { Dispatch, MouseEvent, SetStateAction } from "react";
 
 
 type KeySimTab = "quick" | "visual" | "multitouch" | "macro" | "record";
-type KeySimQuickActionType = "key" | "tap" | "swipe" | "multitouch";
-type KeySimMacroStepType = "key" | "tap" | "swipe" | "adb";
+type KeySimQuickActionType = "key" | "tap" | "swipe" | "multitouch" | "long_press" | "advanced_key" | "adb";
+type KeySimMacroStepType = "key" | "tap" | "long_press" | "swipe" | "adb";
 
 interface KeySimFingerPath {
   id: string;
@@ -19,7 +19,7 @@ function isValidQuickAction(item: unknown): item is KeySimQuickAction {
   if (!item || typeof item !== "object") return false;
   const obj = item as Record<string, unknown>;
   if (typeof obj.name !== "string") return false;
-  if (typeof obj.type !== "string" || !["key", "tap", "swipe", "multitouch"].includes(obj.type)) return false;
+  if (typeof obj.type !== "string" || !["key", "tap", "swipe", "multitouch", "long_press", "advanced_key", "adb"].includes(obj.type)) return false;
   if (typeof obj.value !== "string") return false;
   if (typeof obj.size !== "string" || !["1x1", "2x1", "2x2"].includes(obj.size)) return false;
   if (typeof obj.pressMode !== "string" || !["tap", "long"].includes(obj.pressMode)) return false;
@@ -35,7 +35,7 @@ function isValidMacroTask(item: unknown): item is KeySimMacroTask {
   for (const step of obj.steps) {
     if (!step || typeof step !== "object") return false;
     const s = step as Record<string, unknown>;
-    if (typeof s.type !== "string" || !["key", "tap", "swipe", "adb"].includes(s.type)) return false;
+    if (typeof s.type !== "string" || !["key", "tap", "swipe", "adb", "long_press"].includes(s.type)) return false;
     if (typeof s.name !== "string") return false;
   }
   return true;
@@ -105,7 +105,7 @@ interface KeySimPageProps {
   knownKeycodes: readonly string[];
   handleQuickDraftTypeChange: (type: KeySimQuickActionType) => void;
   updateQuickDraftCsvPart: (partIndex: number, totalParts: number, nextValue: string) => void;
-  openQuickDraftScreenshotPicker: (mode: "tap" | "swipe", target?: "quick" | "macro") => Promise<void> | void;
+  openQuickDraftScreenshotPicker: (mode: "tap" | "swipe", target?: "quick" | "macro", fingerIndex?: number) => Promise<void> | void;
   saveQuickDraft: () => void;
   keySimScreenshotLoading: boolean;
   onRefreshScreenshot: () => Promise<void> | void;
@@ -127,7 +127,7 @@ interface KeySimPageProps {
   setKeySimFingerPaths: Dispatch<SetStateAction<KeySimFingerPath[]>>;
   addKeySimFingerPath: () => void;
   onRunMultiTouchSwipe: () => Promise<void> | void;
-  openCreateMacroTask: () => void;
+  openCreateMacroTask: (initialSteps?: KeySimMacroStep[]) => void;
   keySimMacroTasks: KeySimMacroTask[];
   onRunMacroTask: (task: KeySimMacroTask) => Promise<void> | void;
   setKeySimMacroRepeatDialog: Dispatch<SetStateAction<KeySimRepeatDialog | null>>;
@@ -158,8 +158,7 @@ interface KeySimPageProps {
   recordedSteps: KeySimMacroStep[];
   recordingDuration: number;
   recordingElapsed: number;
-  recordingMode: "getevent" | "dumpsys";
-  setRecordingMode: Dispatch<SetStateAction<"getevent" | "dumpsys">>;
+
   onStartRecording: () => Promise<void> | void;
   onStopRecording: () => Promise<void> | void;
 }
@@ -246,8 +245,7 @@ export default function KeySimPage({
   recordedSteps,
   recordingDuration,
   recordingElapsed,
-  recordingMode,
-  setRecordingMode,
+
   onStartRecording,
   onStopRecording,
 }: KeySimPageProps) {
@@ -307,6 +305,8 @@ export default function KeySimPage({
           </aside>
 
           <div className="device-info-content">
+            {(() => { console.log('[KEYSM_PAGE] RENDERING tab:', keySimTab, 'actions:', keySimQuickActions.length); return null; })()}
+
             {keySimTab === "quick" ? (
               <>
                 <div className="keysim-quick-head">
@@ -317,7 +317,11 @@ export default function KeySimPage({
                       <div className="keysim-quick-add-menu">
                         <button type="button" onClick={() => openCreateQuickAction("key")}>按键</button>
                         <button type="button" onClick={() => openCreateQuickAction("tap")}>点击</button>
+                        <button type="button" onClick={() => openCreateQuickAction("long_press")}>长按</button>
                         <button type="button" onClick={() => openCreateQuickAction("swipe")}>滑动</button>
+                        <button type="button" onClick={() => openCreateQuickAction("multitouch")}>多指滑动</button>
+                        <button type="button" onClick={() => openCreateQuickAction("advanced_key")}>高级按键</button>
+                        <button type="button" onClick={() => openCreateQuickAction("adb")}>ADB 命令</button>
                       </div>
                     ) : null}
                     <button className="ghost-button compact-button" onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json'; inp.onchange = (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const raw = JSON.parse(ev.target?.result as string); if (!Array.isArray(raw)) { alert('格式错误：需要 JSON 数组'); return; } if (raw.length > 0) { const firstInvalid = raw.findIndex((item: unknown) => !isValidQuickAction(item)); if (firstInvalid !== -1) { alert(`数据格式无效：第 ${firstInvalid + 1} 项缺少快捷动作必要字段（name、type、value 等），请确认文件为快捷动作导出`); return; } } setImportDialog({ items: raw, target: 'quick' }); } catch { alert('文件解析失败'); } }; reader.readAsText(file); }; inp.click(); }}>导入</button>
@@ -331,7 +335,7 @@ export default function KeySimPage({
                       key={action.id}
                       className={`keysim-quick-card size-${action.size} ${keySimQuickDraggingId === action.id ? "dragging" : ""}`}
                       draggable
-                      onDragStart={() => setKeySimQuickDraggingId(action.id)}
+                      onDragStart={() => { console.log('[KEYSM_PAGE] drag start', action.id); setKeySimQuickDraggingId(action.id); }}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => {
                         if (keySimQuickDraggingId) {
@@ -343,11 +347,11 @@ export default function KeySimPage({
                     >
                       <div className="keysim-quick-card-top">
                         <strong>{action.name}</strong>
-                        <span className="badge info">{action.type === "key" ? "按键" : action.type === "tap" ? "点击" : action.type === "swipe" ? "滑动" : "多指"}</span>
+                        <span className="badge info">{action.type === "key" ? "按键" : action.type === "tap" ? "点击" : action.type === "long_press" ? "长按" : action.type === "swipe" ? "滑动" : action.type === "multitouch" ? "多指" : action.type === "advanced_key" ? "高级" : "ADB"}</span>
                       </div>
                       <p className="keysim-quick-card-summary">{getQuickActionSummary(action)}</p>
                       <div className="keysim-quick-card-actions">
-                        <button className="primary-button compact-button" disabled={!hasCurrentDevice || keySimBusy || keySimMacroRunningTaskId !== null} onClick={() => void onRunQuickAction(action)}>执行</button>
+                        <button className="primary-button compact-button" disabled={!hasCurrentDevice} onMouseDown={(e) => { console.log('[KEYSM_PAGE] mousedown', JSON.stringify({type:action.type,value:action.value})); e.stopPropagation(); }} onClick={(e) => { console.log('[KEYSM_PAGE] click', JSON.stringify({type:action.type,value:action.value})); e.stopPropagation(); onRunQuickAction(action); }}>执行</button>
                         <button className="ghost-button compact-button" onClick={() => openEditQuickAction(action)}>编辑</button>
                         <button className="ghost-button compact-button" onClick={() => setKeySimQuickActions((prev) => prev.filter((item) => item.id !== action.id))}>删除</button>
                       </div>
@@ -372,8 +376,11 @@ export default function KeySimPage({
                           <select value={keySimQuickDraft.type} onChange={(event) => handleQuickDraftTypeChange(event.target.value as KeySimQuickActionType)}>
                             <option value="key">按键</option>
                             <option value="tap">点击</option>
+                            <option value="long_press">长按</option>
                             <option value="swipe">滑动</option>
                             <option value="multitouch">多指滑动</option>
+                            <option value="advanced_key">高级按键</option>
+                            <option value="adb">ADB 命令</option>
                           </select>
                         </label>
                         <label className="param-field">
@@ -423,19 +430,6 @@ export default function KeySimPage({
                             <div className="page-actions">
                               <button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("tap")}>去实时截图取点</button>
                             </div>
-                            <label className="param-field">
-                              <span>触发方式</span>
-                              <select value={keySimQuickDraft.pressMode} onChange={(event) => setKeySimQuickDraft((current) => current ? { ...current, pressMode: event.target.value as "tap" | "long" } : current)}>
-                                <option value="tap">单击</option>
-                                <option value="long">长按</option>
-                              </select>
-                            </label>
-                            {keySimQuickDraft.pressMode === "long" ? (
-                              <label className="param-field">
-                                <span>按下时长(ms)</span>
-                                <input value={keySimQuickDraft.durationMs} onChange={(event) => setKeySimQuickDraft((current) => current ? { ...current, durationMs: event.target.value } : current)} placeholder="500" />
-                              </label>
-                            ) : null}
                           </>
                         ) : null}
 
@@ -465,12 +459,151 @@ export default function KeySimPage({
                         ) : null}
 
                         {keySimQuickDraft.type === "multitouch" ? (
+                          (() => {
+                            const tracks = keySimQuickDraft.value
+                              .split(";")
+                              .map((t) => t.trim())
+                              .filter(Boolean)
+                              .map((t) => {
+                                const parts = t.split(",").map((p) => p.trim());
+                                // format: startX,startY,endX,endY,durationMs[,delayMs]
+                                while (parts.length < 6) parts.push("");
+                                return { startX: parts[0], startY: parts[1], endX: parts[2], endY: parts[3], durationMs: parts[4], delayMs: parts[5] };
+                              });
+
+                            function updateFinger(index: number, field: string, value: string) {
+                              const updated = tracks.map((f, i) => (i === index ? { ...f, [field]: value } : f));
+                              const serialized = updated
+                                .map((f) => `${f.startX},${f.startY},${f.endX},${f.endY},${f.durationMs},${f.delayMs}`)
+                                .join(";");
+                              setKeySimQuickDraft((current) => (current ? { ...current, value: serialized } : current));
+                            }
+
+                            function addFinger() {
+                              const defaultVal = "300,300,300,300,300,0";
+                              setKeySimQuickDraft((current) => {
+                                if (!current) return current;
+                                const v = current.value ? current.value + ";" + defaultVal : defaultVal;
+                                return { ...current, value: v };
+                              });
+                            }
+
+                            function removeFinger(index: number) {
+                              const updated = [...tracks];
+                              updated.splice(index, 1);
+                              const serialized = updated
+                                .map((f) => `${f.startX},${f.startY},${f.endX},${f.endY},${f.durationMs},${f.delayMs}`)
+                                .join(";");
+                              setKeySimQuickDraft((current) => (current ? { ...current, value: serialized } : current));
+                            }
+
+                            return (
+                              <>
+                                <p className="section-kicker" style={{ margin: "0 0 4px" }}>每指可单独配置起点、终点、时长和开始前延时</p>
+
+                                <div className="keysim-mt-finger-list">
+                                  {tracks.map((finger, index) => (
+                                    <div key={index} className="keysim-mt-finger-card">
+                                      <div className="keysim-mt-card-head">
+                                        <span className="badge info">手指 {index + 1}</span>
+                                        <div className="keysim-mt-card-actions">
+                                          <button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("swipe", "quick", index)}>
+                                            截图取点
+                                          </button>
+                                          <button className="ghost-button compact-button" onClick={() => removeFinger(index)}>
+                                            移除
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="keysim-mt-card-inputs">
+                                        <label className="keysim-mt-input-group">
+                                          <span>起点X</span>
+                                          <input value={finger.startX} onChange={(e) => updateFinger(index, "startX", e.target.value)} placeholder="x" />
+                                        </label>
+                                        <label className="keysim-mt-input-group">
+                                          <span>起点Y</span>
+                                          <input value={finger.startY} onChange={(e) => updateFinger(index, "startY", e.target.value)} placeholder="y" />
+                                        </label>
+                                        <label className="keysim-mt-input-group">
+                                          <span>终点X</span>
+                                          <input value={finger.endX} onChange={(e) => updateFinger(index, "endX", e.target.value)} placeholder="x" />
+                                        </label>
+                                        <label className="keysim-mt-input-group">
+                                          <span>终点Y</span>
+                                          <input value={finger.endY} onChange={(e) => updateFinger(index, "endY", e.target.value)} placeholder="y" />
+                                        </label>
+                                        <label className="keysim-mt-input-group">
+                                          <span>时长(ms)</span>
+                                          <input value={finger.durationMs} onChange={(e) => updateFinger(index, "durationMs", e.target.value)} placeholder="300" />
+                                        </label>
+                                        <label className="keysim-mt-input-group">
+                                          <span>延时(ms)</span>
+                                          <input value={finger.delayMs} onChange={(e) => updateFinger(index, "delayMs", e.target.value)} placeholder="0" />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="page-actions" style={{ marginTop: "8px" }}>
+                                  <button className="ghost-button" onClick={addFinger}>
+                                    新增单指滑动
+                                  </button>
+                                </div>
+                              </>
+                            );
+                          })()
+                        ) : null}
+
+                        {keySimQuickDraft.type === "long_press" ? (
+                          <>
+                            <div className="keysim-quick-param-grid keysim-quick-param-grid-2">
+                              {(() => {
+                                const parts = keySimQuickDraft.value.split(",").map((part) => part.trim());
+                                while (parts.length < 2) {
+                                  parts.push("");
+                                }
+                                return (
+                                  <>
+                                    <label><span>X</span><input value={parts[0]} onChange={(event) => updateQuickDraftCsvPart(0, 3, event.target.value)} placeholder="540" /></label>
+                                    <label><span>Y</span><input value={parts[1]} onChange={(event) => updateQuickDraftCsvPart(1, 3, event.target.value)} placeholder="1800" /></label>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                            <div className="page-actions">
+                              <button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("tap")}>去实时截图取点</button>
+                            </div>
+                            <label className="param-field">
+                              <span>按下时长(ms)</span>
+                              <input value={(() => { const p = keySimQuickDraft.value.split(","); return p[2] ? p[2].trim() : "800"; })()} onChange={(event) => { const parts = keySimQuickDraft.value.split(",").map((part) => part.trim()); while (parts.length < 3) parts.push(""); parts[2] = event.target.value; setKeySimQuickDraft((current) => current ? { ...current, value: parts.join(",") } : current); }} placeholder="800" />
+                            </label>
+                          </>
+                        ) : null}
+
+                        {keySimQuickDraft.type === "advanced_key" ? (
                           <>
                             <label className="param-field">
-                              <span>轨迹串（每指一段，分号分隔）</span>
-                              <textarea value={keySimQuickDraft.value} onChange={(event) => setKeySimQuickDraft((current) => current ? { ...current, value: event.target.value } : current)} placeholder="200,1200,200,400,300;880,1200,880,400,300" />
+                              <span>按键序列（每行一个事件）</span>
+                              <textarea value={keySimQuickDraft.value} onChange={(event) => setKeySimQuickDraft((current) => current ? { ...current, value: event.target.value } : current)} placeholder={`DOWN KEYCODE_HOME,,300\nUP KEYCODE_HOME,,0`} rows={6} />
                             </label>
-                            <p className="param-hint">建议格式：x1,y1,x2,y2,duration; x1,y1,x2,y2,duration</p>
+                            <p className="param-hint" style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                              每行格式：ACTION keycode,x,y delayMs<br />
+                              ACTION: DOWN / UP / MOVE<br />
+                              keycode: KEYCODE_xxx 或数字<br />
+                              x,y: 可选坐标（可留空）<br />
+                              delayMs: 本次事件后的等待毫秒数<br />
+                              示例：<code>DOWN KEYCODE_HOME,,300</code>
+                            </p>
+                          </>
+                        ) : null}
+
+                        {keySimQuickDraft.type === "adb" ? (
+                          <>
+                            <label className="param-field">
+                              <span>ADB 命令（不含 adb 前缀）</span>
+                              <textarea value={keySimQuickDraft.value} onChange={(event) => setKeySimQuickDraft((current) => current ? { ...current, value: event.target.value } : current)} placeholder="shell input keyevent KEYCODE_HOME" rows={4} />
+                            </label>
+                            <p className="param-hint" style={{ fontSize: "12px", color: "var(--text-secondary)" }}>直接填写 ADB 命令参数，如 <code>shell input tap 500 600</code></p>
                           </>
                         ) : null}
                       </div>
@@ -571,7 +704,7 @@ export default function KeySimPage({
                 <div className="keysim-quick-head">
                   <p className="section-kicker">按键编排</p>
                   <div className="keysim-quick-add-wrap">
-                    <button className="primary-button" onClick={openCreateMacroTask}>新增编排任务</button>
+                    <button className="primary-button" onClick={() => openCreateMacroTask()}>新增编排任务</button>
                     <button className="ghost-button compact-button" onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json'; inp.onchange = (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const raw = JSON.parse(ev.target?.result as string); if (!Array.isArray(raw)) { alert('格式错误：需要 JSON 数组'); return; } if (raw.length > 0) { const firstInvalid = raw.findIndex((item: unknown) => !isValidMacroTask(item)); if (firstInvalid !== -1) { alert(`数据格式无效：第 ${firstInvalid + 1} 项缺少编排任务必要字段（name、steps 等），请确认文件为编排任务导出`); return; } } setImportDialog({ items: raw, target: 'macro' }); } catch { alert('文件解析失败'); } }; reader.readAsText(file); }; inp.click(); }}>导入</button>
                     <button className="ghost-button compact-button" onClick={() => { const blob = new Blob([JSON.stringify(keySimMacroTasks, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `keysim_macro_tasks_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url); }}>导出</button>
                   </div>
@@ -586,9 +719,9 @@ export default function KeySimPage({
                         <button className="primary-button compact-button" disabled={!task.steps.length || keySimMacroRunningTaskId !== null} onClick={() => void onRunMacroTask(task)}>{keySimMacroRunningTaskId === task.id ? "执行中..." : "执行"}</button>
                         <button className="ghost-button compact-button" disabled={!task.steps.length || keySimMacroRunningTaskId !== null} onClick={() => setKeySimMacroRepeatDialog({ taskId: task.id, count: "2", intervalMs: "300" })}>重复执行</button>
                         <button className="ghost-button compact-button" disabled={!task.steps.length || keySimMacroRunningTaskId !== null} onClick={() => void startInfiniteExecution(task)}>无限执行</button>
-                        {keySimMacroRepeatProgress ? <button className="danger-button compact-button" onClick={onCancelMacroRepeat}>终止 ({keySimMacroRepeatProgress.current}/{keySimMacroRepeatProgress.total === Infinity ? "∞" : keySimMacroRepeatProgress.total})</button> : null}
+                        {keySimMacroRepeatProgress && keySimMacroRunningTaskId === task.id ? <button className="danger-button compact-button" onClick={onCancelMacroRepeat}>终止 ({keySimMacroRepeatProgress.current}/{keySimMacroRepeatProgress.total === Infinity ? "∞" : keySimMacroRepeatProgress.total})</button> : null}
                         <button className="ghost-button compact-button" onClick={() => openEditMacroTask(task)}>编辑</button>
-                        <button className="ghost-button compact-button" onClick={() => { const blob = new Blob([JSON.stringify(task, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `macro_${task.name.replace(/[\s/]/g, '_')}_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url); }}>导出</button>
+                        <button className="ghost-button compact-button" onClick={() => { const blob = new Blob([JSON.stringify([task], null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `macro_${task.name.replace(/[\s/]/g, '_')}_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url); }}>导出</button>
                         <button className="ghost-button compact-button" onClick={() => deleteMacroTask(task.id)}>删除</button>
                       </div>
                     </div>
@@ -618,6 +751,7 @@ export default function KeySimPage({
                               <div className="keysim-quick-add-menu">
                                 <button type="button" onClick={() => openCreateMacroStep("key")}>按键</button>
                                 <button type="button" onClick={() => openCreateMacroStep("tap")}>点击</button>
+                                <button type="button" onClick={() => openCreateMacroStep("long_press")}>长按</button>
                                 <button type="button" onClick={() => openCreateMacroStep("swipe")}>滑动</button>
                                 <button type="button" onClick={() => openCreateMacroStep("adb")}>ADB 命令</button>
                               </div>
@@ -629,7 +763,7 @@ export default function KeySimPage({
                           {keySimMacroSteps.map((step, index) => (
                             <div className="keysim-macro-summary-row" key={step.id}>
                               <span className="badge info">步骤 {index + 1}</span>
-                              <span className="badge">{step.type === "key" ? "按键" : step.type === "tap" ? "点击" : step.type === "swipe" ? "滑动" : "ADB"}</span>
+                              <span className="badge">{step.type === "key" ? "按键" : step.type === "tap" ? "点击" : step.type === "long_press" ? "长按" : step.type === "swipe" ? "滑动" : "ADB"}</span>
                               <strong>{step.name || `步骤 ${index + 1}`}</strong>
                               <div className="keysim-macro-actions">
                                 <button className="ghost-button compact-button" onClick={() => openEditMacroStep(step)}>编辑</button>
@@ -670,15 +804,16 @@ export default function KeySimPage({
                           }}>
                             <option value="key">按键</option>
                             <option value="tap">点击</option>
+                            <option value="long_press">长按</option>
                             <option value="swipe">滑动</option>
                             <option value="adb">ADB 命令</option>
                           </select>
                         </label>
                         <label className="param-field">
                           <span>步骤参数</span>
-                          <input value={keySimMacroDraft.value} onChange={(event) => setKeySimMacroDraft((current) => current ? { ...current, value: event.target.value } : current)} placeholder={keySimMacroDraft.type === "key" ? "KEYCODE_HOME" : keySimMacroDraft.type === "tap" ? "x,y" : keySimMacroDraft.type === "swipe" ? "x1,y1,x2,y2,duration" : "adb shell ..."} />
+                          <input value={keySimMacroDraft.value} onChange={(event) => setKeySimMacroDraft((current) => current ? { ...current, value: event.target.value } : current)} placeholder={keySimMacroDraft.type === "key" ? "KEYCODE_HOME" : keySimMacroDraft.type === "tap" ? "x,y" : keySimMacroDraft.type === "long_press" ? "x,y,duration" : keySimMacroDraft.type === "swipe" ? "x1,y1,x2,y2,duration" : "adb shell ..."} />
                         </label>
-                        {keySimMacroDraft.type === "tap" ? <div className="page-actions"><button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("tap", "macro")}>去实时截图取点</button></div> : null}
+                        {keySimMacroDraft.type === "tap" || keySimMacroDraft.type === "long_press" ? <div className="page-actions"><button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("tap", "macro")}>去实时截图取点</button></div> : null}
                         {keySimMacroDraft.type === "swipe" ? <div className="page-actions"><button className="ghost-button compact-button" onClick={() => void openQuickDraftScreenshotPicker("swipe", "macro")}>去实时截图取起终点</button></div> : null}
                         <label className="param-field">
                           <span>执行后间隔(ms)</span>
@@ -737,19 +872,7 @@ export default function KeySimPage({
                     </button>
                   )}
                 </div>
-                <p className="param-hint">通过 adb shell getevent 捕获设备触屏/按键事件，录制时长最长 120s，解析为可回放的宏命令。</p>
-                {recordingStatus === "idle" && (
-                  <div className="keysim-rec-mode-select">
-                    <label className="radio-label" style={{ fontSize: "12px", marginRight: "12px" }}>
-                      <input type="radio" name="recMode" checked={recordingMode === "getevent"} onChange={() => setRecordingMode("getevent")} />
-                      标准模式 (getevent)
-                    </label>
-                    <label className="radio-label" style={{ fontSize: "12px" }}>
-                      <input type="radio" name="recMode" checked={recordingMode === "dumpsys"} onChange={() => setRecordingMode("dumpsys")} />
-                      备用模式 (dumpsys / QVM)
-                    </label>
-                  </div>
-                )}
+                <p className="param-hint">通过 logcat SystemGestureDispatcher 捕获设备触摸事件，录制时长最长 120s，自动解析为可回放的宏命令。</p>
 
                 {recordingStatus === "recording" ? (
                   <div className="keysim-rec-preview">
@@ -779,7 +902,7 @@ export default function KeySimPage({
                         {recordedSteps.map((step, index) => (
                           <div key={step.id} className="keysim-finger-row">
                             <span className="badge info">{index + 1}</span>
-                            <span className="badge">{step.type === "key" ? "按键" : step.type === "tap" ? "点击" : step.type === "swipe" ? "滑动" : step.type}</span>
+                            <span className="badge">{step.type === "key" ? "按键" : step.type === "tap" ? "点击" : step.type === "long_press" ? "长按" : step.type === "swipe" ? "滑动" : step.type}</span>
                             <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{step.type === "key" ? step.value : step.type === "tap" ? `(${step.value})` : step.value}</span>
                             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>延时 {step.delayMs}ms</span>
                           </div>
@@ -791,7 +914,7 @@ export default function KeySimPage({
                       <button className="primary-button" onClick={() => void onStartRecording()}>
                         重新录制
                       </button>
-                      <button className="ghost-button" onClick={() => { setKeySimTab("macro"); openCreateMacroTask(); }} disabled={recordedSteps.length === 0}>
+                      <button className="ghost-button" onClick={() => { setKeySimTab("macro"); openCreateMacroTask(recordedSteps); }} disabled={recordedSteps.length === 0}>
                         另存为编排任务
                       </button>
                       <button className="ghost-button" onClick={() => setKeySimTab("macro")}>

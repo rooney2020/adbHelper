@@ -30,7 +30,7 @@
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | Ubuntu 22.04+ / Windows 10+ / macOS 13+ |
+| 操作系统 | Ubuntu 20.04+ / Windows 10+ / macOS 13+ |
 | ADB | Android SDK Platform Tools（`adb` 需在 PATH 中） |
 | Python | 3.10+ |
 | Node.js | 18+（仅开发需要） |

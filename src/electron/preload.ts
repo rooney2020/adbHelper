@@ -131,4 +131,40 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
     loadAll: () => ipcRenderer.invoke("storage.loadAll"),
     save: (payload: { key: string; value: unknown }) => ipcRenderer.invoke("storage.save", payload),
   },
+  build: {
+    start: (payload: { envId: string; envName: string; workDir: string; type: string; command: string }) =>
+      ipcRenderer.invoke("build.start", payload),
+    stop: (payload: { envId: string }) =>
+      ipcRenderer.invoke("build.stop", payload),
+    status: (payload: { envId: string }) =>
+      ipcRenderer.invoke("build.status", payload),
+    onLog: (callback: (data: { envId: string; text: string }) => void) => {
+      const handler = (_event: any, data: { envId: string; text: string }) => callback(data);
+      ipcRenderer.on("build.log", handler);
+      return () => ipcRenderer.removeListener("build.log", handler);
+    },
+    onDone: (callback: (data: { envId: string; exitCode: number | null; envName: string }) => void) => {
+      const handler = (_event: any, data: { envId: string; exitCode: number | null; envName: string }) => callback(data);
+      ipcRenderer.on("build.done", handler);
+      return () => ipcRenderer.removeListener("build.done", handler);
+    },
+  },
+  push: {
+    start: (payload: { envId: string; targetId: string; targetName: string; deviceId: string; files: Array<{ localPath: string; remotePath: string }> }) =>
+      ipcRenderer.invoke("push.start", payload),
+    stop: (payload: { envId: string; targetId: string }) =>
+      ipcRenderer.invoke("push.stop", payload),
+    status: (payload: { envId: string; targetId: string }) =>
+      ipcRenderer.invoke("push.status", payload),
+    onLog: (callback: (data: { envId: string; targetId: string; text: string }) => void) => {
+      const handler = (_event: any, data: { envId: string; targetId: string; text: string }) => callback(data);
+      ipcRenderer.on("push.log", handler);
+      return () => ipcRenderer.removeListener("push.log", handler);
+    },
+    onDone: (callback: (data: { envId: string; targetId: string; exitCode: number | null; targetName: string }) => void) => {
+      const handler = (_event: any, data: { envId: string; targetId: string; exitCode: number | null; targetName: string }) => callback(data);
+      ipcRenderer.on("push.done", handler);
+      return () => ipcRenderer.removeListener("push.done", handler);
+    },
+  },
 });

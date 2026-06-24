@@ -6,7 +6,7 @@ import { fallbackApi, matchesFilter, normalizeLogcatRefreshIntervalMs, normalize
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { renderOutputPreview, renderDiffText, buildDiffRows, buildDiffSegments, getResultPrimaryCommand, getDiffRecordMeta, countOutputLines, copyText, buildExportBaseName, downloadTextFile, downloadBlobFile, decodeBase64ToBlob, buildMarkdownExport, buildTextExport, resolveDiffTarget, highlightText, wrapInMarkdownCodeBlock, historyItemToRunResult } from "./lib/outputRenderers";
 
-const BackupPage = lazy(() => import("./pages/BackupPage"));
+const BuildPage = lazy(() => import("./pages/BuildPage"));
 const CommandPage = lazy(() => import("./pages/CommandPage"));
 const DumpsysPage = lazy(() => import("./pages/DumpsysPage"));
 const InfoPage = lazy(() => import("./pages/InfoPage"));
@@ -26,7 +26,7 @@ const filters: Array<{ id: FilterKey; label: string }> = [
 
 const resultTabs = ["structured", "raw", "diff", "history"] as const;
 type ResultTab = (typeof resultTabs)[number];
-type MainView = "command" | "info" | "backup" | "logcat" | "keysim" | "layout" | "dumpsys" | "monkey" | "performance";
+type MainView = "command" | "info" | "build" | "logcat" | "keysim" | "layout" | "dumpsys" | "monkey" | "performance";
 type DeviceInfoTab = "basic" | "files" | "apps" | "users" | "processes" | "topfocus" | "screen";
 type KeySimTab = "quick" | "visual" | "multitouch" | "macro" | "record";
 type LayoutViewerTab = "winscope" | "inspector";
@@ -60,7 +60,7 @@ const MAIN_VIEWS: Array<{ id: MainView; label: string }> = [
   { id: "performance", label: "性能测试" },
   { id: "dumpsys", label: "Dumpsys" },
   { id: "info", label: "设备信息" },
-  { id: "backup", label: "备份与恢复" },
+  { id: "build", label: "编译与备份" },
 ];
 
 const KEY_SIM_TABS: Array<{ id: KeySimTab; label: string; description: string }> = [
@@ -2321,6 +2321,7 @@ export default function App() {
   const [keySimMacroTaskDialogOpen, setKeySimMacroTaskDialogOpen] = useState(false);
   const [keySimMacroRepeatDialog, setKeySimMacroRepeatDialog] = useState<{ taskId: string; count: string; intervalMs: string } | null>(null);
   const [dataImportDialog, setDataImportDialog] = useState<{ data: Record<string, unknown>; fileName: string } | null>(null);
+  const [buildEnvReloadKey, setBuildEnvReloadKey] = useState(0);
   const [keySimMacroAddMenuOpen, setKeySimMacroAddMenuOpen] = useState(false);
 
   function validateImportData(data: unknown): { valid: false; error: string } | { valid: true } {
@@ -2331,8 +2332,9 @@ export default function App() {
     const hasPanels = Array.isArray(obj.panels);
     const hasQuickActions = Array.isArray(obj.quickActions);
     const hasMacroTasks = Array.isArray(obj.macroTasks);
-    if (!hasPanels && !hasQuickActions && !hasMacroTasks) {
-      return { valid: false, error: "导出文件中未找到有效的面板、快捷动作或编排任务数据" };
+    const hasBuildEnvs = Array.isArray(obj.buildEnvironments) || Array.isArray(obj.environments);
+    if (!hasPanels && !hasQuickActions && !hasMacroTasks && !hasBuildEnvs) {
+      return { valid: false, error: "导出文件中未找到有效的面板、快捷动作、编排任务或编译环境数据" };
     }
     if (hasPanels) {
       for (const panel of obj.panels as unknown[]) {
@@ -2364,7 +2366,15 @@ export default function App() {
     return { valid: true };
   }
 
-  function handleExportAllData() {
+  async function handleExportAllData() {
+    // Include build environments from storage
+    let buildEnvironments: unknown[] = [];
+    try {
+      const storage = await (window as any).adbHelperApi?.storage?.loadAll();
+      if (storage?.status === "ok" && Array.isArray(storage.data?.buildEnvironments)) {
+        buildEnvironments = storage.data.buildEnvironments;
+      }
+    } catch {}
     const all: Record<string, unknown> = {
       version: 1,
       type: "adb-helper-all",
@@ -2372,6 +2382,7 @@ export default function App() {
       panels,
       quickActions: keySimQuickActions,
       macroTasks: keySimMacroTasks,
+      buildEnvironments,
     };
     const blob = new Blob([JSON.stringify(all, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -2444,6 +2455,12 @@ export default function App() {
       } else {
         setKeySimMacroTasks(tasks);
       }
+    }
+    // Build environments: save to storage and trigger reload
+    const buildEnvs = data.buildEnvironments || data.environments;
+    if (Array.isArray(buildEnvs)) {
+      (window as any).adbHelperApi?.storage?.save({ key: "buildEnvironments", value: buildEnvs }).catch(() => {});
+      setBuildEnvReloadKey((k) => k + 1);
     }
   }
   const [keySimMacroDraft, setKeySimMacroDraft] = useState<KeySimMacroStep | null>(null);
@@ -7559,9 +7576,11 @@ export default function App() {
         <PerformancePage currentDeviceId={currentDeviceId} />
       ) : null}
 
-      {activeMainView === "backup" ? (
-        <BackupPage
+      {activeMainView === "build" ? (
+        <BuildPage
           hasCurrentDevice={Boolean(currentDevice)}
+          currentDeviceId={currentDevice?.id ?? ""}
+          buildEnvReloadKey={buildEnvReloadKey}
           backupBusyAction={backupBusyAction}
           selectedBackupPaths={selectedBackupPaths}
           selectedRestorePaths={selectedRestorePaths}
@@ -8770,7 +8789,8 @@ export default function App() {
               <p style={{ margin: "0 0 16px", lineHeight: 1.6, color: "var(--text-secondary, #666)" }}>
                 已解析到面板 <strong>{Array.isArray(dataImportDialog.data.panels) ? (dataImportDialog.data.panels as unknown[]).length : 0}</strong> 个、
                 快捷动作 <strong>{Array.isArray(dataImportDialog.data.quickActions) ? (dataImportDialog.data.quickActions as unknown[]).length : 0}</strong> 条、
-                编排任务 <strong>{Array.isArray(dataImportDialog.data.macroTasks) ? (dataImportDialog.data.macroTasks as unknown[]).length : 0}</strong> 条
+                编排任务 <strong>{Array.isArray(dataImportDialog.data.macroTasks) ? (dataImportDialog.data.macroTasks as unknown[]).length : 0}</strong> 条、
+                编译环境 <strong>{(() => { const e = dataImportDialog.data.buildEnvironments || dataImportDialog.data.environments; return Array.isArray(e) ? e.length : 0; })()}</strong> 个
               </p>
               <div className="import-option-list">
                 <button className="import-option-card" onClick={() => {

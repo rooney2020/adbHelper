@@ -1485,6 +1485,209 @@ const SIZE_MB = ${JSON.stringify(sizeMB)};
             return { status: "error", message: err instanceof Error ? err.message : String(err) };
         }
     });
+    const buildProcesses = new Map();
+    ipcMain.handle("build.start", async (_event, payload) => {
+        const existing = buildProcesses.get(payload.envId);
+        if (existing?.running) {
+            return { status: "error", message: "该编译环境已有正在执行的编译任务" };
+        }
+        const child = spawn("/bin/bash", ["-c", payload.command], {
+            cwd: payload.workDir,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: { ...process.env },
+        });
+        const session = {
+            child,
+            startTime: Date.now(),
+            envName: payload.envName,
+            logs: [],
+            running: true,
+        };
+        child.stdout?.on("data", (chunk) => {
+            const text = chunk.toString("utf-8");
+            session.logs.push(text);
+            // Keep last 1000 log chunks
+            if (session.logs.length > 1000)
+                session.logs.splice(0, session.logs.length - 1000);
+            // Push to renderer via IPC event
+            const wins = BrowserWindow.getAllWindows();
+            for (const win of wins) {
+                try {
+                    win.webContents.send("build.log", { envId: payload.envId, text });
+                }
+                catch { /* window gone */ }
+            }
+        });
+        child.stderr?.on("data", (chunk) => {
+            const text = chunk.toString("utf-8");
+            session.logs.push(text);
+            if (session.logs.length > 1000)
+                session.logs.splice(0, session.logs.length - 1000);
+            const wins = BrowserWindow.getAllWindows();
+            for (const win of wins) {
+                try {
+                    win.webContents.send("build.log", { envId: payload.envId, text });
+                }
+                catch { /* window gone */ }
+            }
+        });
+        child.on("exit", (code) => {
+            session.running = false;
+            const exitMsg = `\n[build] 进程退出，退出码: ${code ?? "(信号)"}`;
+            session.logs.push(exitMsg);
+            const wins = BrowserWindow.getAllWindows();
+            for (const win of wins) {
+                try {
+                    win.webContents.send("build.done", { envId: payload.envId, exitCode: code, envName: payload.envName });
+                    win.webContents.send("build.log", { envId: payload.envId, text: exitMsg });
+                }
+                catch { /* window gone */ }
+            }
+            // Clean up after 5 minutes
+            setTimeout(() => {
+                buildProcesses.delete(payload.envId);
+            }, 5 * 60 * 1000);
+        });
+        child.on("error", (err) => {
+            session.running = false;
+            const errMsg = `\n[build] 启动失败: ${err.message}`;
+            session.logs.push(errMsg);
+            const wins = BrowserWindow.getAllWindows();
+            for (const win of wins) {
+                try {
+                    win.webContents.send("build.done", { envId: payload.envId, exitCode: -1, envName: payload.envName });
+                    win.webContents.send("build.log", { envId: payload.envId, text: errMsg });
+                }
+                catch { /* window gone */ }
+            }
+        });
+        buildProcesses.set(payload.envId, session);
+        return {
+            status: "ok",
+            pid: child.pid,
+            startTime: session.startTime,
+        };
+    });
+    ipcMain.handle("build.stop", async (_event, payload) => {
+        const session = buildProcesses.get(payload.envId);
+        if (!session || !session.running) {
+            return { status: "error", message: "没有正在执行的编译任务" };
+        }
+        session.child.kill("SIGTERM");
+        session.running = false;
+        session.logs.push("\n[build] 已手动终止");
+        return { status: "ok" };
+    });
+    ipcMain.handle("build.status", async (_event, payload) => {
+        const session = buildProcesses.get(payload.envId);
+        if (!session) {
+            return { status: "ok", running: false, logs: "", startTime: null };
+        }
+        return {
+            status: "ok",
+            running: session.running,
+            logs: session.logs.join(""),
+            startTime: session.startTime,
+            envName: session.envName,
+        };
+    });
+    const pushProcesses = new Map();
+    ipcMain.handle("push.start", async (_event, payload) => {
+        const key = `${payload.envId}:${payload.targetId}`;
+        const existing = pushProcesses.get(key);
+        if (existing?.running) {
+            return { status: "error", message: "该目标已在推包中" };
+        }
+        // Build sequential adb push commands
+        const adbCmds = payload.files.map((f) => `adb -s ${payload.deviceId} push "${f.localPath}" "${f.remotePath}"`);
+        const script = adbCmds.join(" && ");
+        const child = spawn("/bin/bash", ["-c", script], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        const session = {
+            child,
+            startTime: Date.now(),
+            envId: payload.envId,
+            targetId: payload.targetId,
+            targetName: payload.targetName,
+            logs: [],
+            running: true,
+        };
+        const sendPushEvent = (channel, data) => {
+            const wins = BrowserWindow.getAllWindows();
+            for (const win of wins) {
+                try {
+                    win.webContents.send(channel, data);
+                }
+                catch { /* window gone */ }
+            }
+        };
+        child.stdout?.on("data", (chunk) => {
+            const text = chunk.toString("utf-8");
+            session.logs.push(text);
+            if (session.logs.length > 500)
+                session.logs.splice(0, session.logs.length - 500);
+            sendPushEvent("push.log", { envId: payload.envId, targetId: payload.targetId, text });
+        });
+        child.stderr?.on("data", (chunk) => {
+            const text = chunk.toString("utf-8");
+            session.logs.push(text);
+            if (session.logs.length > 500)
+                session.logs.splice(0, session.logs.length - 500);
+            sendPushEvent("push.log", { envId: payload.envId, targetId: payload.targetId, text });
+        });
+        child.on("exit", (code) => {
+            session.running = false;
+            const exitMsg = `\n[push] 推包完成，退出码: ${code ?? "(信号)"}`;
+            session.logs.push(exitMsg);
+            sendPushEvent("push.done", {
+                envId: payload.envId,
+                targetId: payload.targetId,
+                exitCode: code,
+                targetName: payload.targetName,
+            });
+            sendPushEvent("push.log", { envId: payload.envId, targetId: payload.targetId, text: exitMsg });
+            setTimeout(() => pushProcesses.delete(key), 5 * 60 * 1000);
+        });
+        child.on("error", (err) => {
+            session.running = false;
+            const errMsg = `\n[push] 启动失败: ${err.message}`;
+            session.logs.push(errMsg);
+            sendPushEvent("push.done", {
+                envId: payload.envId,
+                targetId: payload.targetId,
+                exitCode: -1,
+                targetName: payload.targetName,
+            });
+            sendPushEvent("push.log", { envId: payload.envId, targetId: payload.targetId, text: errMsg });
+        });
+        pushProcesses.set(key, session);
+        return { status: "ok", pid: child.pid, startTime: session.startTime };
+    });
+    ipcMain.handle("push.stop", async (_event, payload) => {
+        const key = `${payload.envId}:${payload.targetId}`;
+        const session = pushProcesses.get(key);
+        if (!session?.running) {
+            return { status: "error", message: "没有正在执行的推包任务" };
+        }
+        session.child.kill("SIGTERM");
+        session.running = false;
+        session.logs.push("\n[push] 已手动终止");
+        return { status: "ok" };
+    });
+    ipcMain.handle("push.status", async (_event, payload) => {
+        const key = `${payload.envId}:${payload.targetId}`;
+        const session = pushProcesses.get(key);
+        if (!session) {
+            return { status: "ok", running: false, logs: "" };
+        }
+        return {
+            status: "ok",
+            running: session.running,
+            logs: session.logs.join(""),
+            startTime: session.startTime,
+        };
+    });
 }
 let tray = null;
 function createTray() {
@@ -1492,6 +1695,27 @@ function createTray() {
     const trayIcon = nativeImage.createFromPath(iconPath);
     tray = new Tray(trayIcon);
     tray.setToolTip("ADB Helper");
+    function reloadWindow() {
+        const wins = BrowserWindow.getAllWindows();
+        if (wins.length > 0) {
+            const win = wins[0];
+            if (!win.isVisible()) {
+                win.show();
+                win.focus();
+            }
+            try {
+                win.webContents.reload();
+            }
+            catch (e) {
+                console.error("[Tray] reload failed, recreating window", e);
+                win.close();
+                createWindow();
+            }
+        }
+        else {
+            createWindow();
+        }
+    }
     const contextMenu = Menu.buildFromTemplate([
         {
             label: "显示窗口",
@@ -1510,6 +1734,11 @@ function createTray() {
                 if (wins.length > 0)
                     wins[0].hide();
             },
+        },
+        { type: "separator" },
+        {
+            label: "刷新窗口",
+            click: reloadWindow,
         },
         { type: "separator" },
         {
@@ -1563,6 +1792,27 @@ function createWindow() {
         return;
     }
     void window.loadURL(`http://127.0.0.1:${perfApiPort}/`);
+    // Renderer crash recovery: auto-reload if the renderer process goes away
+    window.webContents.on("render-process-gone", (_event, details) => {
+        console.warn(`[Renderer] process gone, reason: ${details.reason}`);
+        // Allow the main process to breathe before reloading
+        const delayMs = details.reason === "oom" ? 3000 : 1000;
+        setTimeout(() => {
+            try {
+                void window.reload();
+                console.log(`[Renderer] reload triggered after ${delayMs}ms delay`);
+            }
+            catch (e) {
+                console.error("[Renderer] reload failed, recreating window", e);
+                createWindow();
+            }
+        }, delayMs);
+        app.on("activate", () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
+    });
     // Packaged (release) builds: disable DevTools entirely
     if (app.isPackaged) {
         window.webContents.on("before-input-event", (event, input) => {

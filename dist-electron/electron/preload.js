@@ -118,4 +118,34 @@ contextBridge.exposeInMainWorld("adbHelperApi", {
         loadAll: () => ipcRenderer.invoke("storage.loadAll"),
         save: (payload) => ipcRenderer.invoke("storage.save", payload),
     },
+    build: {
+        start: (payload) => ipcRenderer.invoke("build.start", payload),
+        stop: (payload) => ipcRenderer.invoke("build.stop", payload),
+        status: (payload) => ipcRenderer.invoke("build.status", payload),
+        onLog: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on("build.log", handler);
+            return () => ipcRenderer.removeListener("build.log", handler);
+        },
+        onDone: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on("build.done", handler);
+            return () => ipcRenderer.removeListener("build.done", handler);
+        },
+    },
+    push: {
+        start: (payload) => ipcRenderer.invoke("push.start", payload),
+        stop: (payload) => ipcRenderer.invoke("push.stop", payload),
+        status: (payload) => ipcRenderer.invoke("push.status", payload),
+        onLog: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on("push.log", handler);
+            return () => ipcRenderer.removeListener("push.log", handler);
+        },
+        onDone: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on("push.done", handler);
+            return () => ipcRenderer.removeListener("push.done", handler);
+        },
+    },
 });
